@@ -10,32 +10,56 @@ import XCTest
 final class To_DoUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testCreateListAndCompleteThenMoveBackTask() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["UITEST_DISABLE_AUTH", "UITEST_IN_MEMORY_STORE"]
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-    }
+        let newListRowTrigger = app.buttons["newListRowTrigger"]
+        XCTAssertTrue(newListRowTrigger.waitForExistence(timeout: 5))
+        newListRowTrigger.tap()
 
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+        let listNameField = app.textFields["newListInlineField"]
+        XCTAssertTrue(listNameField.waitForExistence(timeout: 3))
+        listNameField.tap()
+        listNameField.typeText("Personal")
+
+        app.buttons["Add"].firstMatch.tap()
+
+        let newTaskRowTrigger = app.buttons["newTaskRowTrigger"]
+        XCTAssertTrue(newTaskRowTrigger.waitForExistence(timeout: 3))
+        newTaskRowTrigger.tap()
+
+        let taskTitleField = app.textFields["newTaskInlineField"]
+        XCTAssertTrue(taskTitleField.waitForExistence(timeout: 3))
+        taskTitleField.tap()
+        taskTitleField.typeText("Buy milk")
+
+        app.buttons["Add"].firstMatch.tap()
+
+        let taskLabel = app.staticTexts["Buy milk"]
+        XCTAssertTrue(taskLabel.waitForExistence(timeout: 3))
+
+        let markCompleteButton = app.buttons["markCompleteButton"].firstMatch
+        XCTAssertTrue(markCompleteButton.waitForExistence(timeout: 3))
+        markCompleteButton.tap()
+
+        let confirmCompleteTaskButton = app.buttons["confirmCompleteTaskButton"]
+        XCTAssertTrue(confirmCompleteTaskButton.waitForExistence(timeout: 3))
+        confirmCompleteTaskButton.tap()
+
+        let completedDisclosure = app.staticTexts["Completed"]
+        XCTAssertTrue(completedDisclosure.waitForExistence(timeout: 3))
+        completedDisclosure.tap()
+
+        let moveBackButton = app.buttons["moveBackButton"].firstMatch
+        XCTAssertTrue(moveBackButton.waitForExistence(timeout: 3))
+        moveBackButton.tap()
+
+        XCTAssertTrue(taskLabel.waitForExistence(timeout: 3))
     }
 }

@@ -5,12 +5,23 @@
 //  Created by Mukul Arora on 28/02/26.
 //
 
+import Foundation
 import Testing
+@testable import To_Do
 
 struct To_DoTests {
 
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
-    }
+    @Test
+    func taskCompletionStateChangesAsExpected() {
+        let list = TodoList(name: "Work")
+        let task = TaskItem(title: "Submit report", list: list)
 
+        #expect(task.isCompleted == false)
+
+        task.completedAt = .now
+        #expect(task.isCompleted == true)
+
+        task.completedAt = nil
+        #expect(task.isCompleted == false)
+    }
 }
