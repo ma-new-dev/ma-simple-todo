@@ -34,6 +34,18 @@ struct ContentView: View {
     let onDeleteAccount: () -> Void
 
     var body: some View {
+        TabView {
+            todoTab
+                .tabItem { Label("To Do", systemImage: "checklist") }
+
+            CRMRootView()
+                .tabItem { Label("CRM", systemImage: "person.2.fill") }
+        }
+    }
+
+    // MARK: - To Do Tab
+
+    private var todoTab: some View {
         NavigationSplitView {
             List(selection: $selectedList) {
                 Section {
