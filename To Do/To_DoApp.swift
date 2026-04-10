@@ -59,7 +59,7 @@ struct To_DoApp: App {
                 return StorageBootstrap(
                     container: localContainer,
                     warningMessage: """
-                    CloudKit initialization failed, so this device is using local-only storage.
+                    Cloud sync initialization failed, so this device is using local-only storage.
                     Existing data on this device is still retained and will stay available here.
                     Error: \(cloudKitError.localizedDescription)
                     """
@@ -74,7 +74,7 @@ struct To_DoApp: App {
         WindowGroup {
             Group {
                 if shouldSkipAuth || isSignedIn {
-                    ContentView(userEmail: displayedEmail, onSignOut: signOut)
+                    ContentView(userEmail: displayedEmail, onSignOut: signOut, onDeleteAccount: deleteAccount)
                 } else {
                     SignInView(handleSignInResult: handleSignInResult)
                 }
@@ -161,6 +161,18 @@ struct To_DoApp: App {
         isSignedIn = false
     }
 
+    private func deleteAccount() {
+        let context = sharedModelContainer.mainContext
+        do {
+            try context.delete(model: TaskItem.self)
+            try context.delete(model: TodoList.self)
+            try context.save()
+        } catch {
+            // Continue with sign-out even if data deletion fails
+        }
+        signOut()
+    }
+
     private func validateStoredAppleCredentialIfNeeded() async {
         guard !shouldSkipAuth else { return }
         guard isSignedIn, !appleUserID.isEmpty else { return }
@@ -218,7 +230,7 @@ private struct SignInView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Text("TestFlight installs on new devices work normally, but cross-device sync requires the same Apple ID signed into iCloud on each device. Updating the app on an existing device keeps its current data.")
+            Text("TestFlight installs on new devices work normally, but cross-device sync requires the same Apple ID on each device. Updating the app on an existing device keeps its current data.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

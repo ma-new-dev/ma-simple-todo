@@ -20,6 +20,7 @@ struct ContentView: View {
 
     @State private var selectedList: TodoList?
     @State private var pendingListDeletion: TodoList?
+    @State private var showDeleteAccountConfirmation = false
 
     @State private var isAddingListInline = false
     @State private var newListName = ""
@@ -30,6 +31,7 @@ struct ContentView: View {
 
     let userEmail: String
     let onSignOut: () -> Void
+    let onDeleteAccount: () -> Void
 
     var body: some View {
         NavigationSplitView {
@@ -64,6 +66,10 @@ struct ContentView: View {
                     Menu {
                         Text(userEmail)
                         Button("Sign Out", role: .destructive, action: onSignOut)
+                        Divider()
+                        Button("Delete Account", role: .destructive) {
+                            showDeleteAccountConfirmation = true
+                        }
                     } label: {
                         Label("Account", systemImage: "person.circle")
                     }
@@ -91,6 +97,15 @@ struct ContentView: View {
                 }
             } message: {
                 Text("All tasks in this list will also be deleted.")
+            }
+            .alert(
+                "Delete Account?",
+                isPresented: $showDeleteAccountConfirmation
+            ) {
+                Button("Delete Account", role: .destructive, action: onDeleteAccount)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("All your lists and tasks will be permanently deleted. This cannot be undone.")
             }
             .onChange(of: lists) { _, updatedLists in
                 if updatedLists.isEmpty {
@@ -637,6 +652,6 @@ private struct TaskListDetailView: View {
 }
 
 #Preview {
-    ContentView(userEmail: "preview@example.com", onSignOut: {})
+    ContentView(userEmail: "preview@example.com", onSignOut: {}, onDeleteAccount: {})
         .modelContainer(for: [TodoList.self, TaskItem.self], inMemory: true)
 }
