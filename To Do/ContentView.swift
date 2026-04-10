@@ -212,7 +212,7 @@ struct ContentView: View {
         let trimmedName = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
 
-        let nextOrder = (lists.map(\.sortOrder).max() ?? -1) + 1
+        let nextOrder = (lists.map(\.sortOrder).min() ?? 1) - 1
         let list = TodoList(name: trimmedName, sortOrder: nextOrder)
         modelContext.insert(list)
         persistChanges()
@@ -562,7 +562,7 @@ private struct TaskListDetailView: View {
         let trimmedTitle = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
 
-        let nextOrder = ((list.tasks ?? []).map(\.sortOrder).max() ?? -1) + 1
+        let nextOrder = ((list.tasks ?? []).map(\.sortOrder).min() ?? 1) - 1
         let task = TaskItem(title: trimmedTitle, list: list, sortOrder: nextOrder)
         modelContext.insert(task)
         persistChanges()

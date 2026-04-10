@@ -1,15 +1,30 @@
 import SwiftUI
 import SwiftData
 
-/// Root view for the CRM tab — wraps Dashboard + Contacts in their own TabView
 struct CRMRootView: View {
-    var body: some View {
-        TabView {
-            DashboardView()
-                .tabItem { Label("Dashboard", systemImage: "house.fill") }
+    @State private var selectedTab = 0
 
-            ContactListView()
-                .tabItem { Label("Contacts", systemImage: "person.2.fill") }
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("CRM Section", selection: $selectedTab) {
+                    Text("Dashboard").tag(0)
+                    Text("Contacts").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                if selectedTab == 0 {
+                    DashboardView()
+                } else {
+                    ContactListView()
+                }
+            }
+            .navigationTitle(selectedTab == 0 ? "Dashboard" : "Contacts")
+            .navigationBarTitleDisplayMode(.large)
         }
     }
 }
