@@ -32,14 +32,32 @@ struct ContentView: View {
     let userEmail: String
     let onSignOut: () -> Void
     let onDeleteAccount: () -> Void
+    var initialTab: Int = 0
+    var initialCRMTab: Int = 0
+    var autoSelectFirstList: Bool = false
+
+    @State private var selectedTabIndex: Int = 0
+
+    init(userEmail: String, onSignOut: @escaping () -> Void, onDeleteAccount: @escaping () -> Void,
+         initialTab: Int = 0, initialCRMTab: Int = 0, autoSelectFirstList: Bool = false) {
+        self.userEmail = userEmail
+        self.onSignOut = onSignOut
+        self.onDeleteAccount = onDeleteAccount
+        self.initialTab = initialTab
+        self.initialCRMTab = initialCRMTab
+        self.autoSelectFirstList = autoSelectFirstList
+        self._selectedTabIndex = State(initialValue: initialTab)
+    }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTabIndex) {
             todoTab
                 .tabItem { Label("To Do", systemImage: "checklist") }
+                .tag(0)
 
-            CRMRootView()
+            CRMRootView(initialCRMTab: initialCRMTab)
                 .tabItem { Label("CRM", systemImage: "person.2.fill") }
+                .tag(1)
         }
     }
 
@@ -73,6 +91,12 @@ struct ContentView: View {
                 .onMove(perform: moveLists)
             }
             .navigationTitle("Lists")
+            .task {
+                if autoSelectFirstList, selectedList == nil {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    selectedList = lists.first
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Menu {
@@ -664,6 +688,6 @@ private struct TaskListDetailView: View {
 }
 
 #Preview {
-    ContentView(userEmail: "preview@example.com", onSignOut: {}, onDeleteAccount: {})
+    ContentView(userEmail: "preview@example.com", onSignOut: {}, onDeleteAccount: {}, initialTab: 0, initialCRMTab: 0, autoSelectFirstList: false)
         .modelContainer(for: [TodoList.self, TaskItem.self], inMemory: true)
 }

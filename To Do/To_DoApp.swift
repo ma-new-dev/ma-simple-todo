@@ -72,11 +72,50 @@ struct To_DoApp: App {
         }
     }
 
+    private var isScreenshotMode: Bool {
+        launchArguments.contains("SCREENSHOT_MODE")
+    }
+
+    private var screenshotScreen: String {
+        if let idx = launchArguments.firstIndex(of: "SCREENSHOT_SCREEN"),
+           idx + 1 < launchArguments.count {
+            return launchArguments[idx + 1]
+        }
+        return "lists"
+    }
+
+    private var screenshotInitialTab: Int {
+        switch screenshotScreen {
+        case "crm_dashboard", "crm_contacts": return 1
+        default: return 0
+        }
+    }
+
+    private var screenshotInitialCRMTab: Int {
+        screenshotScreen == "crm_contacts" ? 1 : 0
+    }
+
+    private var screenshotAutoSelectList: Bool {
+        screenshotScreen == "tasks_detail"
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
                 if shouldSkipAuth || isSignedIn {
-                    ContentView(userEmail: displayedEmail, onSignOut: signOut, onDeleteAccount: deleteAccount)
+                    ContentView(
+                        userEmail: displayedEmail,
+                        onSignOut: signOut,
+                        onDeleteAccount: deleteAccount,
+                        initialTab: isScreenshotMode ? screenshotInitialTab : 0,
+                        initialCRMTab: isScreenshotMode ? screenshotInitialCRMTab : 0,
+                        autoSelectFirstList: isScreenshotMode ? screenshotAutoSelectList : false
+                    )
+                    .onAppear {
+                        if isScreenshotMode {
+                            SampleData.inject(into: sharedModelContainer.mainContext)
+                        }
+                    }
                 } else {
                     SignInView(handleSignInResult: handleSignInResult)
                 }
