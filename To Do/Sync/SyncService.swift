@@ -69,10 +69,18 @@ final class SyncService: ObservableObject {
         let localContacts = (try? context.fetch(FetchDescriptor<Contact>())) ?? []
         let localInters  = (try? context.fetch(FetchDescriptor<Interaction>())) ?? []
 
-        var listBySupaId   = Dictionary(uniqueKeysWithValues: localLists.map   { ($0.supabaseId, $0) })
-        var taskBySupaId   = Dictionary(uniqueKeysWithValues: localTasks.map   { ($0.supabaseId, $0) })
-        var contactById    = Dictionary(uniqueKeysWithValues: localContacts.map { ($0.id, $0) })
-        var interById      = Dictionary(uniqueKeysWithValues: localInters.map   { ($0.id, $0) })
+        // Safely build lookup maps (tolerates duplicates — overwrites with last one)
+        var listBySupaId: [UUID: TodoList] = [:]
+        for l in localLists { listBySupaId[l.supabaseId] = l }
+
+        var taskBySupaId: [UUID: TaskItem] = [:]
+        for t in localTasks { taskBySupaId[t.supabaseId] = t }
+
+        var contactById: [UUID: Contact] = [:]
+        for c in localContacts { contactById[c.id] = c }
+
+        var interById: [UUID: Interaction] = [:]
+        for i in localInters { interById[i.id] = i }
 
         // Merge lists
         for sb in lists {
