@@ -22,6 +22,9 @@ struct ContentView: View {
     @State private var pendingListDeletion: TodoList?
     @State private var showDeleteAccountConfirmation = false
 
+    @StateObject private var assistantVM = AssistantViewModel()
+    @State private var showAssistant = false
+
     @State private var isAddingListInline = false
     @State private var newListName = ""
     @FocusState private var isListNameFieldFocused: Bool
@@ -58,6 +61,26 @@ struct ContentView: View {
             CRMRootView(initialCRMTab: initialCRMTab)
                 .tabItem { Label("CRM", systemImage: "person.2.fill") }
                 .tag(1)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                showAssistant = true
+            } label: {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Color.blue)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 80)   // sits above the tab bar
+        }
+        .sheet(isPresented: $showAssistant) {
+            AssistantSheetView(viewModel: assistantVM)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 

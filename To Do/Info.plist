@@ -8,5 +8,9 @@
 	<string>AppIcon</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Used to import contacts into your personal CRM.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Used for voice input to the AI assistant.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Used to transcribe your voice into text for the AI assistant.</string>
 </dict>
 </plist>
