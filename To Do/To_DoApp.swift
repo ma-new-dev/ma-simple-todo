@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import AuthenticationServices
+import Combine
 
 @main
 struct To_DoApp: App {
@@ -114,6 +115,18 @@ struct To_DoApp: App {
                     .onAppear {
                         if isScreenshotMode {
                             SampleData.inject(into: sharedModelContainer.mainContext)
+                        }
+                        // Initial sync on launch
+                        Task {
+                            await SyncService.shared.sync(context: sharedModelContainer.mainContext)
+                        }
+                    }
+                    .onReceive(
+                        NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
+                    ) { _ in
+                        // Re-sync whenever app comes back to foreground
+                        Task {
+                            await SyncService.shared.sync(context: sharedModelContainer.mainContext)
                         }
                     }
                 } else {

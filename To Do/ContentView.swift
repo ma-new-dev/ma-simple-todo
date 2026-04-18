@@ -263,6 +263,7 @@ struct ContentView: View {
         let list = TodoList(name: trimmedName, sortOrder: nextOrder)
         modelContext.insert(list)
         persistChanges()
+        Task { await SupabaseService.shared.push(list: list) }
 
         cancelInlineListCreation()
     }
@@ -299,12 +300,14 @@ struct ContentView: View {
         if editingListID == list.persistentModelID {
             cancelListRename()
         }
+        let sid = list.supabaseId
         modelContext.delete(list)
 
         for (index, currentList) in lists.enumerated() {
             currentList.sortOrder = index
         }
         persistChanges()
+        Task { await SupabaseService.shared.deleteList(sid) }
     }
 
     private func moveLists(from source: IndexSet, to destination: Int) {
@@ -613,6 +616,7 @@ private struct TaskListDetailView: View {
         let task = TaskItem(title: trimmedTitle, list: list, sortOrder: nextOrder)
         modelContext.insert(task)
         persistChanges()
+        Task { await SupabaseService.shared.push(task: task) }
 
         cancelInlineTaskCreation()
     }
@@ -644,21 +648,27 @@ private struct TaskListDetailView: View {
 
     private func markTaskCompleted(_ task: TaskItem) {
         task.completedAt = .now
+        task.updatedAt   = .now
         persistChanges()
+        Task { await SupabaseService.shared.push(task: task) }
     }
 
     private func moveTaskBackToActive(_ task: TaskItem) {
         task.completedAt = nil
+        task.updatedAt   = .now
         persistChanges()
+        Task { await SupabaseService.shared.push(task: task) }
     }
 
     private func deleteTask(_ task: TaskItem) {
         if editingTaskID == task.persistentModelID {
             cancelTaskRename()
         }
+        let sid = task.supabaseId
         modelContext.delete(task)
         reindexTasks()
         persistChanges()
+        Task { await SupabaseService.shared.deleteTask(sid) }
     }
 
     private func moveActiveTasks(from source: IndexSet, to destination: Int) {
