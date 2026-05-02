@@ -37,6 +37,7 @@ struct ContentView: View {
     var autoSelectFirstList: Bool = false
 
     @State private var selectedTabIndex: Int = 0
+    @State private var showRecordingSheet = false
 
     init(userEmail: String, onSignOut: @escaping () -> Void, onDeleteAccount: @escaping () -> Void,
          initialTab: Int = 0, initialCRMTab: Int = 0, autoSelectFirstList: Bool = false) {
@@ -58,6 +59,21 @@ struct ContentView: View {
             CRMRootView(initialCRMTab: initialCRMTab)
                 .tabItem { Label("CRM", systemImage: "person.2.fill") }
                 .tag(1)
+
+            InboxRootView()
+                .tabItem { Label("Inbox", systemImage: "tray") }
+                .tag(2)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            FloatingMicButton {
+                showRecordingSheet = true
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 80)   // sits above the tab bar
+        }
+        .sheet(isPresented: $showRecordingSheet) {
+            RecordingSheet()
+                .presentationDetents([.large])
         }
     }
 

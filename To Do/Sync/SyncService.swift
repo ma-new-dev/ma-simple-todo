@@ -44,12 +44,14 @@ final class SyncService: ObservableObject {
         let tasks   = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
         let contacts    = (try? context.fetch(FetchDescriptor<Contact>())) ?? []
         let interactions = (try? context.fetch(FetchDescriptor<Interaction>())) ?? []
+        let dumps   = (try? context.fetch(FetchDescriptor<BrainDump>())) ?? []
 
         await withTaskGroup(of: Void.self) { group in
             for l in lists   { group.addTask { await self.sb.push(list: l) } }
             for t in tasks   { group.addTask { await self.sb.push(task: t) } }
             for c in contacts { group.addTask { await self.sb.push(contact: c) } }
             for i in interactions { group.addTask { await self.sb.push(interaction: i) } }
+            for d in dumps    { group.addTask { await self.sb.push(brainDump: d) } }
         }
     }
 
@@ -60,14 +62,16 @@ final class SyncService: ObservableObject {
         async let sbTasks  = sb.fetchTasks()
         async let sbConts  = sb.fetchContacts()
         async let sbInters = sb.fetchInteractions()
+        async let sbDumps  = sb.fetchBrainDumps()
 
-        let (lists, tasks, contacts, interactions) = await (sbLists, sbTasks, sbConts, sbInters)
+        let (lists, tasks, contacts, interactions, dumps) = await (sbLists, sbTasks, sbConts, sbInters, sbDumps)
 
         // Build lookup maps for existing SwiftData records
         let localLists   = (try? context.fetch(FetchDescriptor<TodoList>())) ?? []
         let localTasks   = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
         let localContacts = (try? context.fetch(FetchDescriptor<Contact>())) ?? []
         let localInters  = (try? context.fetch(FetchDescriptor<Interaction>())) ?? []
+        let localDumps   = (try? context.fetch(FetchDescriptor<BrainDump>())) ?? []
 
         // Safely build lookup maps (tolerates duplicates — overwrites with last one)
         var listBySupaId: [UUID: TodoList] = [:]
@@ -81,6 +85,9 @@ final class SyncService: ObservableObject {
 
         var interById: [UUID: Interaction] = [:]
         for i in localInters { interById[i.id] = i }
+
+        var dumpBySupaId: [UUID: BrainDump] = [:]
+        for d in localDumps { dumpBySupaId[d.supabaseId] = d }
 
         // Merge lists
         for sb in lists {
@@ -188,6 +195,28 @@ final class SyncService: ObservableObject {
             )
             i.contact = contact
             context.insert(i)
+        }
+
+        // Merge brain dumps
+        for sb in dumps {
+            if let local = dumpBySupaId[sb.id] {
+                if remoteIsNewer(sb.updated_at, than: local.updatedAt) {
+                    local.transcript        = sb.transcript
+                    local.processingSummary = sb.processing_summary
+                    local.processedAt       = sb.processed_at.flatMap { date($0) }
+                    local.updatedAt         = date(sb.updated_at) ?? local.updatedAt
+                }
+            } else {
+                let d = BrainDump(
+                    transcript: sb.transcript,
+                    processingSummary: sb.processing_summary,
+                    processedAt: sb.processed_at.flatMap { date($0) }
+                )
+                d.supabaseId = sb.id
+                d.updatedAt  = date(sb.updated_at) ?? .now
+                context.insert(d)
+                dumpBySupaId[sb.id] = d
+            }
         }
 
         try? context.save()

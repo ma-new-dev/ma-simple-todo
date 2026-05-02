@@ -40,6 +40,7 @@ struct To_DoApp: App {
             TaskItem.self,
             Contact.self,
             Interaction.self,
+            BrainDump.self,
         ])
         let cloudKitConfiguration = ModelConfiguration(
             schema: schema,
@@ -222,6 +223,7 @@ struct To_DoApp: App {
             try context.delete(model: TodoList.self)
             try context.delete(model: Interaction.self)
             try context.delete(model: Contact.self)
+            try context.delete(model: BrainDump.self)
             try context.save()
         } catch {
             // Continue with sign-out even if data deletion fails

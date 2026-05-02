@@ -53,6 +53,14 @@ struct SBInteraction: Codable {
     var date: String
 }
 
+struct SBBrainDump: Codable {
+    var id: UUID
+    var transcript: String
+    var processing_summary: String
+    var processed_at: String?
+    var updated_at: String?
+}
+
 // MARK: - Service
 
 final class SupabaseService {
@@ -180,6 +188,28 @@ final class SupabaseService {
 
     func fetchInteractions() async -> [SBInteraction] {
         await get("interactions")
+    }
+
+    // ── Brain Dumps ───────────────────────────────────────────────────────────
+
+    func push(brainDump dump: BrainDump) async {
+        let r = SBBrainDump(
+            id: dump.supabaseId,
+            transcript: dump.transcript,
+            processing_summary: dump.processingSummary,
+            processed_at: dump.processedAt.map(iso),
+            updated_at: iso(dump.updatedAt)
+        )
+        guard let data = try? JSONEncoder().encode([r]) else { return }
+        await upsert("brain_dumps", body: data)
+    }
+
+    func deleteBrainDump(_ id: UUID) async {
+        await req(method: "DELETE", path: "brain_dumps?id=eq.\(id)")
+    }
+
+    func fetchBrainDumps() async -> [SBBrainDump] {
+        await get("brain_dumps")
     }
 
     // ── Date helper ───────────────────────────────────────────────────────────
