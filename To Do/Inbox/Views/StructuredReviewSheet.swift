@@ -187,8 +187,9 @@ struct StructuredReviewSheet: View {
         // Tasks
         taskRows = parsed.tasks.map { p in
             let chosen: String
-            if let suggested = p.list_name, lists.contains(where: { $0.name == suggested }) {
-                chosen = suggested
+            if let suggested = p.list_name,
+               let match = lists.first(where: { $0.name.localizedCaseInsensitiveCompare(suggested) == .orderedSame }) {
+                chosen = match.name
             } else {
                 chosen = lists.first?.name ?? "__NEW__"
             }

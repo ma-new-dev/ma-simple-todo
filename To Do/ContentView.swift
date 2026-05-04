@@ -270,7 +270,9 @@ struct ContentView: View {
         let trimmed = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         list.name = trimmed
+        list.updatedAt = .now
         persistChanges()
+        Task { await SupabaseService.shared.push(list: list) }
         cancelListRename()
     }
 
@@ -309,6 +311,7 @@ struct ContentView: View {
 
         for (index, list) in reorderedLists.enumerated() {
             list.sortOrder = index
+            list.updatedAt = .now
         }
         persistChanges()
     }
@@ -623,7 +626,9 @@ private struct TaskListDetailView: View {
         let trimmed = editingTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         task.title = trimmed
+        task.updatedAt = .now
         persistChanges()
+        Task { await SupabaseService.shared.push(task: task) }
         cancelTaskRename()
     }
 
@@ -671,11 +676,13 @@ private struct TaskListDetailView: View {
         var nextOrder = 0
         for task in reordered {
             task.sortOrder = nextOrder
+            task.updatedAt = .now
             nextOrder += 1
         }
 
         for task in completedTasks {
             task.sortOrder = nextOrder
+            task.updatedAt = .now
             nextOrder += 1
         }
         persistChanges()
@@ -688,11 +695,13 @@ private struct TaskListDetailView: View {
         var nextOrder = 0
         for task in activeTasks {
             task.sortOrder = nextOrder
+            task.updatedAt = .now
             nextOrder += 1
         }
 
         for task in reorderedCompleted {
             task.sortOrder = nextOrder
+            task.updatedAt = .now
             nextOrder += 1
         }
         persistChanges()

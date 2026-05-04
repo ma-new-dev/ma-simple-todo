@@ -99,13 +99,28 @@ final class SyncService: ObservableObject {
                     local.updatedAt = date(sb.updated_at) ?? local.updatedAt
                 }
             } else {
-                // New list from Supabase (created by shortcuts)
-                let minOrder = localLists.map(\.sortOrder).min() ?? 0
-                let newList  = TodoList(name: sb.name, sortOrder: minOrder - 1)
-                newList.supabaseId = sb.id
-                newList.updatedAt  = date(sb.updated_at) ?? .now
-                context.insert(newList)
-                listBySupaId[sb.id] = newList
+                // Before creating, check if a local list with the same name exists
+                // (concurrent creation on two devices gives them different supabaseIds)
+                if let nameMatch = localLists.first(where: {
+                    $0.name.localizedCaseInsensitiveCompare(sb.name) == .orderedSame
+                }) {
+                    // Reconcile: adopt the Supabase UUID as the stable ID
+                    nameMatch.supabaseId = sb.id
+                    if remoteIsNewer(sb.updated_at, than: nameMatch.updatedAt) {
+                        nameMatch.name      = sb.name
+                        nameMatch.sortOrder = sb.sort_order
+                        nameMatch.updatedAt = date(sb.updated_at) ?? nameMatch.updatedAt
+                    }
+                    listBySupaId[sb.id] = nameMatch
+                } else {
+                    // Truly new list from Supabase (created by shortcuts / another user)
+                    let minOrder = localLists.map(\.sortOrder).min() ?? 0
+                    let newList  = TodoList(name: sb.name, sortOrder: minOrder - 1)
+                    newList.supabaseId = sb.id
+                    newList.updatedAt  = date(sb.updated_at) ?? .now
+                    context.insert(newList)
+                    listBySupaId[sb.id] = newList
+                }
             }
         }
 
