@@ -67,12 +67,19 @@ final class SupabaseService {
     static let shared = SupabaseService()
     private init() {}
 
+    // KILL SWITCH: Supabase sync was causing duplicate lists/tasks across
+    // devices because of unsolvable race conditions between CloudKit and
+    // Supabase as parallel sync layers. Disabled — CloudKit is now the
+    // sole source of cross-device sync. Flip to true to re-enable.
+    private static let isEnabled = false
+
     private let base = kSupabaseURL
     private let key  = kSupabaseKey
 
     // ── Low-level helpers ────────────────────────────────────────────────────
 
     private func req(method: String, path: String, body: Data? = nil, prefer: String? = nil) async {
+        guard Self.isEnabled else { return }
         guard var comps = URLComponents(string: "\(base)/rest/v1/\(path)") else { return }
         var r = URLRequest(url: comps.url!)
         r.httpMethod = method
@@ -85,6 +92,7 @@ final class SupabaseService {
     }
 
     private func get<T: Decodable>(_ table: String, query: String = "") async -> [T] {
+        guard Self.isEnabled else { return [] }
         let path = "\(table)?select=*\(query.isEmpty ? "" : "&\(query)")"
         guard let url = URL(string: "\(base)/rest/v1/\(path)") else { return [] }
         var r = URLRequest(url: url)
