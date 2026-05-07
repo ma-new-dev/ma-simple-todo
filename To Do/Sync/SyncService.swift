@@ -89,8 +89,20 @@ final class SyncService: ObservableObject {
         var dumpBySupaId: [UUID: BrainDump] = [:]
         for d in localDumps { dumpBySupaId[d.supabaseId] = d }
 
+        // Track which local lists have been claimed by a Supabase ID.
+        // Prevents two Supabase rows with the same name from claiming the same local list,
+        // and lets us detect Supabase-side duplicates so we can clean them up.
+        var claimedLocalListIDs: Set<PersistentIdentifier> = []
+        var supabaseListsToDelete: [UUID] = []
+
+        // Sort lists so the most-recently-updated entry wins claim of a name match.
+        // (Bug-created duplicates often have stale updated_at — we want the live one.)
+        let sortedLists = lists.sorted { (a, b) in
+            (date(a.updated_at) ?? .distantPast) > (date(b.updated_at) ?? .distantPast)
+        }
+
         // Merge lists
-        for sb in lists {
+        for sb in sortedLists {
             if let local = listBySupaId[sb.id] {
                 // Update if Supabase version is newer
                 if remoteIsNewer(sb.updated_at, than: local.updatedAt) {
@@ -98,10 +110,12 @@ final class SyncService: ObservableObject {
                     local.sortOrder = sb.sort_order
                     local.updatedAt = date(sb.updated_at) ?? local.updatedAt
                 }
+                claimedLocalListIDs.insert(local.persistentModelID)
             } else {
-                // Before creating, check if a local list with the same name exists
+                // Try to claim an unclaimed local list with the same name
                 // (concurrent creation on two devices gives them different supabaseIds)
                 if let nameMatch = localLists.first(where: {
+                    !claimedLocalListIDs.contains($0.persistentModelID) &&
                     $0.name.localizedCaseInsensitiveCompare(sb.name) == .orderedSame
                 }) {
                     // Reconcile: adopt the Supabase UUID as the stable ID
@@ -112,6 +126,14 @@ final class SyncService: ObservableObject {
                         nameMatch.updatedAt = date(sb.updated_at) ?? nameMatch.updatedAt
                     }
                     listBySupaId[sb.id] = nameMatch
+                    claimedLocalListIDs.insert(nameMatch.persistentModelID)
+                } else if localLists.contains(where: {
+                    claimedLocalListIDs.contains($0.persistentModelID) &&
+                    $0.name.localizedCaseInsensitiveCompare(sb.name) == .orderedSame
+                }) {
+                    // A local list with this name is already claimed by another Supabase row.
+                    // This Supabase entry is a duplicate — delete it remotely.
+                    supabaseListsToDelete.append(sb.id)
                 } else {
                     // Truly new list from Supabase (created by shortcuts / another user)
                     let minOrder = localLists.map(\.sortOrder).min() ?? 0
@@ -120,12 +142,21 @@ final class SyncService: ObservableObject {
                     newList.updatedAt  = date(sb.updated_at) ?? .now
                     context.insert(newList)
                     listBySupaId[sb.id] = newList
+                    claimedLocalListIDs.insert(newList.persistentModelID)
                 }
             }
         }
 
+        // Track claimed local tasks similarly
+        var claimedLocalTaskIDs: Set<PersistentIdentifier> = []
+        var supabaseTasksToDelete: [UUID] = []
+
+        let sortedTasks = tasks.sorted { (a, b) in
+            (date(a.updated_at) ?? .distantPast) > (date(b.updated_at) ?? .distantPast)
+        }
+
         // Merge tasks
-        for sb in tasks {
+        for sb in sortedTasks {
             if let local = taskBySupaId[sb.id] {
                 if remoteIsNewer(sb.updated_at, than: local.updatedAt) {
                     local.title       = sb.title
@@ -133,20 +164,57 @@ final class SyncService: ObservableObject {
                     local.sortOrder   = sb.sort_order
                     local.updatedAt   = date(sb.updated_at) ?? local.updatedAt
                 }
+                claimedLocalTaskIDs.insert(local.persistentModelID)
             } else {
                 // New task from Supabase — find parent list
                 guard let listSbId = sb.list_id,
-                      let parentList = listBySupaId[listSbId] else { continue }
+                      let parentList = listBySupaId[listSbId] else {
+                    // Parent list doesn't exist — orphan task. Delete from Supabase.
+                    supabaseTasksToDelete.append(sb.id)
+                    continue
+                }
 
-                let minOrder = (parentList.tasks ?? []).map(\.sortOrder).min() ?? 0
-                let newTask  = TaskItem(title: sb.title, list: parentList,
-                                        completedAt: sb.completed_at.flatMap { date($0) },
-                                        sortOrder: minOrder - 1)
-                newTask.supabaseId = sb.id
-                newTask.updatedAt  = date(sb.updated_at) ?? .now
-                context.insert(newTask)
-                taskBySupaId[sb.id] = newTask
+                // Try to claim an unclaimed local task in the same list with the same title
+                let listTasks = parentList.tasks ?? []
+                if let nameMatch = listTasks.first(where: {
+                    !claimedLocalTaskIDs.contains($0.persistentModelID) &&
+                    $0.title.localizedCaseInsensitiveCompare(sb.title) == .orderedSame
+                }) {
+                    nameMatch.supabaseId = sb.id
+                    if remoteIsNewer(sb.updated_at, than: nameMatch.updatedAt) {
+                        nameMatch.title       = sb.title
+                        nameMatch.completedAt = sb.completed_at.flatMap { date($0) }
+                        nameMatch.sortOrder   = sb.sort_order
+                        nameMatch.updatedAt   = date(sb.updated_at) ?? nameMatch.updatedAt
+                    }
+                    taskBySupaId[sb.id] = nameMatch
+                    claimedLocalTaskIDs.insert(nameMatch.persistentModelID)
+                } else if listTasks.contains(where: {
+                    claimedLocalTaskIDs.contains($0.persistentModelID) &&
+                    $0.title.localizedCaseInsensitiveCompare(sb.title) == .orderedSame
+                }) {
+                    // Duplicate task in Supabase — clean up
+                    supabaseTasksToDelete.append(sb.id)
+                } else {
+                    let minOrder = listTasks.map(\.sortOrder).min() ?? 0
+                    let newTask  = TaskItem(title: sb.title, list: parentList,
+                                            completedAt: sb.completed_at.flatMap { date($0) },
+                                            sortOrder: minOrder - 1)
+                    newTask.supabaseId = sb.id
+                    newTask.updatedAt  = date(sb.updated_at) ?? .now
+                    context.insert(newTask)
+                    taskBySupaId[sb.id] = newTask
+                    claimedLocalTaskIDs.insert(newTask.persistentModelID)
+                }
             }
+        }
+
+        // Self-heal: delete identified Supabase duplicates so they don't keep coming back
+        for dupId in supabaseListsToDelete {
+            Task.detached { await SupabaseService.shared.deleteList(dupId) }
+        }
+        for dupId in supabaseTasksToDelete {
+            Task.detached { await SupabaseService.shared.deleteTask(dupId) }
         }
 
         // Merge contacts
