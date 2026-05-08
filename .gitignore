@@ -16,4 +16,6 @@ DerivedData/
 *.ipa
 *.xcuserstate
 .DS_Store
+
+# Secrets — never commit these
 To Do/Sync/Secrets.swift

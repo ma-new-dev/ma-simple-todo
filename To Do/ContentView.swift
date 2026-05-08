@@ -22,6 +22,9 @@ struct ContentView: View {
     @State private var pendingListDeletion: TodoList?
     @State private var showDeleteAccountConfirmation = false
 
+    @StateObject private var assistantVM = AssistantViewModel()
+    @State private var showAssistant = false
+
     @State private var isAddingListInline = false
     @State private var newListName = ""
     @FocusState private var isListNameFieldFocused: Bool
@@ -37,7 +40,6 @@ struct ContentView: View {
     var autoSelectFirstList: Bool = false
 
     @State private var selectedTabIndex: Int = 0
-    @State private var showRecordingSheet = false
 
     init(userEmail: String, onSignOut: @escaping () -> Void, onDeleteAccount: @escaping () -> Void,
          initialTab: Int = 0, initialCRMTab: Int = 0, autoSelectFirstList: Bool = false) {
@@ -59,21 +61,26 @@ struct ContentView: View {
             CRMRootView(initialCRMTab: initialCRMTab)
                 .tabItem { Label("CRM", systemImage: "person.2.fill") }
                 .tag(1)
-
-            InboxRootView()
-                .tabItem { Label("Inbox", systemImage: "tray") }
-                .tag(2)
         }
         .overlay(alignment: .bottomTrailing) {
-            FloatingMicButton {
-                showRecordingSheet = true
+            Button {
+                showAssistant = true
+            } label: {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Color.blue)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
             }
             .padding(.trailing, 20)
             .padding(.bottom, 80)   // sits above the tab bar
         }
-        .sheet(isPresented: $showRecordingSheet) {
-            RecordingSheet()
+        .sheet(isPresented: $showAssistant) {
+            AssistantSheetView(viewModel: assistantVM)
                 .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -256,7 +263,6 @@ struct ContentView: View {
         let list = TodoList(name: trimmedName, sortOrder: nextOrder)
         modelContext.insert(list)
         persistChanges()
-        Task { await SupabaseService.shared.push(list: list) }
 
         cancelInlineListCreation()
     }
@@ -270,9 +276,7 @@ struct ContentView: View {
         let trimmed = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         list.name = trimmed
-        list.updatedAt = .now
         persistChanges()
-        Task { await SupabaseService.shared.push(list: list) }
         cancelListRename()
     }
 
@@ -295,14 +299,12 @@ struct ContentView: View {
         if editingListID == list.persistentModelID {
             cancelListRename()
         }
-        let sid = list.supabaseId
         modelContext.delete(list)
 
         for (index, currentList) in lists.enumerated() {
             currentList.sortOrder = index
         }
         persistChanges()
-        Task { await SupabaseService.shared.deleteList(sid) }
     }
 
     private func moveLists(from source: IndexSet, to destination: Int) {
@@ -311,7 +313,6 @@ struct ContentView: View {
 
         for (index, list) in reorderedLists.enumerated() {
             list.sortOrder = index
-            list.updatedAt = .now
         }
         persistChanges()
     }
@@ -612,7 +613,6 @@ private struct TaskListDetailView: View {
         let task = TaskItem(title: trimmedTitle, list: list, sortOrder: nextOrder)
         modelContext.insert(task)
         persistChanges()
-        Task { await SupabaseService.shared.push(task: task) }
 
         cancelInlineTaskCreation()
     }
@@ -626,9 +626,7 @@ private struct TaskListDetailView: View {
         let trimmed = editingTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         task.title = trimmed
-        task.updatedAt = .now
         persistChanges()
-        Task { await SupabaseService.shared.push(task: task) }
         cancelTaskRename()
     }
 
@@ -646,27 +644,21 @@ private struct TaskListDetailView: View {
 
     private func markTaskCompleted(_ task: TaskItem) {
         task.completedAt = .now
-        task.updatedAt   = .now
         persistChanges()
-        Task { await SupabaseService.shared.push(task: task) }
     }
 
     private func moveTaskBackToActive(_ task: TaskItem) {
         task.completedAt = nil
-        task.updatedAt   = .now
         persistChanges()
-        Task { await SupabaseService.shared.push(task: task) }
     }
 
     private func deleteTask(_ task: TaskItem) {
         if editingTaskID == task.persistentModelID {
             cancelTaskRename()
         }
-        let sid = task.supabaseId
         modelContext.delete(task)
         reindexTasks()
         persistChanges()
-        Task { await SupabaseService.shared.deleteTask(sid) }
     }
 
     private func moveActiveTasks(from source: IndexSet, to destination: Int) {
@@ -676,13 +668,11 @@ private struct TaskListDetailView: View {
         var nextOrder = 0
         for task in reordered {
             task.sortOrder = nextOrder
-            task.updatedAt = .now
             nextOrder += 1
         }
 
         for task in completedTasks {
             task.sortOrder = nextOrder
-            task.updatedAt = .now
             nextOrder += 1
         }
         persistChanges()
@@ -695,13 +685,11 @@ private struct TaskListDetailView: View {
         var nextOrder = 0
         for task in activeTasks {
             task.sortOrder = nextOrder
-            task.updatedAt = .now
             nextOrder += 1
         }
 
         for task in reorderedCompleted {
             task.sortOrder = nextOrder
-            task.updatedAt = .now
             nextOrder += 1
         }
         persistChanges()

@@ -8,7 +8,6 @@
 import SwiftUI
 import SwiftData
 import AuthenticationServices
-import Combine
 
 @main
 struct To_DoApp: App {
@@ -40,7 +39,6 @@ struct To_DoApp: App {
             TaskItem.self,
             Contact.self,
             Interaction.self,
-            BrainDump.self,
         ])
         let cloudKitConfiguration = ModelConfiguration(
             schema: schema,
@@ -116,18 +114,6 @@ struct To_DoApp: App {
                     .onAppear {
                         if isScreenshotMode {
                             SampleData.inject(into: sharedModelContainer.mainContext)
-                        }
-                        // Initial sync on launch
-                        Task {
-                            await SyncService.shared.sync(context: sharedModelContainer.mainContext)
-                        }
-                    }
-                    .onReceive(
-                        NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
-                    ) { _ in
-                        // Re-sync whenever app comes back to foreground
-                        Task {
-                            await SyncService.shared.sync(context: sharedModelContainer.mainContext)
                         }
                     }
                 } else {
@@ -223,7 +209,6 @@ struct To_DoApp: App {
             try context.delete(model: TodoList.self)
             try context.delete(model: Interaction.self)
             try context.delete(model: Contact.self)
-            try context.delete(model: BrainDump.self)
             try context.save()
         } catch {
             // Continue with sign-out even if data deletion fails
