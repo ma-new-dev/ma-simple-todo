@@ -12,9 +12,14 @@ import SwiftData
 final class TodoList {
     var name: String = ""
     var createdAt: Date = Foundation.Date()
-    var updatedAt: Date = Foundation.Date()
     var sortOrder: Int = 0
-    var supabaseId: UUID = UUID()   // stable ID for Supabase sync
+
+    // Transient: not persisted, not synced to CloudKit. Kept as in-memory
+    // properties so existing code that reads/writes them still compiles.
+    // CloudKit Production schema does not contain these fields, and shipping
+    // them caused records to be silently rejected by CloudKit.
+    @Transient var updatedAt: Date = Foundation.Date()
+    @Transient var supabaseId: UUID = UUID()
 
     @Relationship(deleteRule: .cascade, inverse: \TaskItem.list)
     var tasks: [TaskItem]?
@@ -32,10 +37,11 @@ final class TodoList {
 final class TaskItem {
     var title: String = ""
     var createdAt: Date = Foundation.Date()
-    var updatedAt: Date = Foundation.Date()
     var completedAt: Date?
     var sortOrder: Int = 0
-    var supabaseId: UUID = UUID()   // stable ID for Supabase sync
+
+    @Transient var updatedAt: Date = Foundation.Date()
+    @Transient var supabaseId: UUID = UUID()
 
     var list: TodoList?
 
