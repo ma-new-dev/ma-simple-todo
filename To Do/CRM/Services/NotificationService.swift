@@ -1,59 +1,90 @@
 import UserNotifications
 import Foundation
 
+/// Schedules "time to reconnect" reminders for contacts.
+///
+/// Reminders are keyed by the contact's stable `id` rather than its name, so renaming a
+/// contact re-targets its existing reminder instead of orphaning it, and two contacts who
+/// share a name keep separate reminders.
 final class NotificationService {
     static let shared = NotificationService()
 
+    /// Why a reminder could not be scheduled, so callers can tell the user.
+    enum ScheduleResult {
+        case scheduled
+        case permissionDenied
+        case dateInPast
+        case failed
+    }
+
+    private let center = UNUserNotificationCenter.current()
+
     // MARK: - Permission
 
-    func requestAuthorization() async {
+    /// Asks for alert/badge/sound authorization. Returns whether it was granted.
+    @discardableResult
+    func requestAuthorization() async -> Bool {
         do {
-            let granted = try await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .badge, .sound])
-            print("Notification permission: \(granted)")
+            return try await center.requestAuthorization(options: [.alert, .badge, .sound])
         } catch {
-            print("Notification auth error: \(error)")
+            return false
         }
     }
 
-    // MARK: - Schedule Reconnect
+    // MARK: - Schedule
 
-    func scheduleReconnect(for name: String, date: Date) {
-        let center = UNUserNotificationCenter.current()
-        let id = "reconnect-\(name.lowercased().replacingOccurrences(of: " ", with: "-"))"
+    private func identifier(for id: UUID) -> String {
+        "reconnect-\(id.uuidString)"
+    }
 
-        // Remove existing notification for this contact
-        center.removePendingNotificationRequests(withIdentifiers: [id])
+    /// Schedules a 9am reminder on `date`, replacing any existing reminder for this contact.
+    /// Requests permission first if the user has not been asked yet.
+    @discardableResult
+    func scheduleReconnect(id: UUID, name: String, date: Date) async -> ScheduleResult {
+        cancelReconnect(id: id)
 
-        guard date > Date() else { return }
+        guard date > Date() else { return .dateInPast }
+
+        switch await center.notificationSettings().authorizationStatus {
+        case .notDetermined:
+            guard await requestAuthorization() else { return .permissionDenied }
+        case .denied:
+            return .permissionDenied
+        default:
+            break
+        }
 
         let content = UNMutableNotificationContent()
         content.title = "Time to reconnect"
-        content.body  = "You planned to reach out to \(name) today."
+        content.body = "You planned to reach out to \(name) today."
         content.sound = .default
-        content.badge = 1
 
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        comps.hour = 9  // 9 AM on the reconnect day
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        components.hour = 9
 
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        let request = UNNotificationRequest(
+            identifier: identifier(for: id),
+            content: content,
+            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        )
 
-        center.add(request) { error in
-            if let error { print("Notification schedule error: \(error)") }
+        do {
+            try await center.add(request)
+            return .scheduled
+        } catch {
+            return .failed
         }
     }
 
     // MARK: - Cancel
 
-    func cancelReconnect(for name: String) {
-        let id = "reconnect-\(name.lowercased().replacingOccurrences(of: " ", with: "-"))"
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+    func cancelReconnect(id: UUID) {
+        center.removePendingNotificationRequests(withIdentifiers: [identifier(for: id)])
     }
 
-    // MARK: - Update badge
+    // MARK: - Badge
 
     func clearBadge() {
-        UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+        center.setBadgeCount(0) { _ in }
     }
 }

@@ -9,6 +9,9 @@ struct ContactListView: View {
     @State private var showFilters = false
     @State private var viewMode: ViewMode = .list
     @State private var contactToDelete: Contact?
+    /// Held separately so the dialog title never reads a property off a deleted model.
+    @State private var contactToDeleteName = ""
+    @State private var contactToEdit: Contact?
     @State private var showImport = false
 
     enum ViewMode: String, CaseIterable {
@@ -39,13 +42,18 @@ struct ContactListView: View {
             .sheet(isPresented: $showAddContact) { ContactEditView(mode: .add) }
             .sheet(isPresented: $showFilters) { FilterView(vm: vm, contacts: contacts) }
             .sheet(isPresented: $showImport) { ImportContactsView() }
-            .confirmationDialog("Delete \(contactToDelete?.name ?? "")?", isPresented: Binding(
+            .sheet(item: $contactToEdit) { contact in
+                ContactEditView(mode: .edit(contact))
+            }
+            .confirmationDialog("Delete \(contactToDeleteName)?", isPresented: Binding(
                 get: { contactToDelete != nil },
                 set: { if !$0 { contactToDelete = nil } }
             ), titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
                     if let c = contactToDelete { deleteContact(c) }
+                    contactToDelete = nil
                 }
+                Button("Cancel", role: .cancel) { contactToDelete = nil }
             }
         }
     }
@@ -67,10 +75,12 @@ struct ContactListView: View {
                         ContactRowView(contact: contact)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) { contactToDelete = contact } label: {
+                        Button(role: .destructive) { beginDelete(contact) } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        NavigationLink(destination: ContactEditView(mode: .edit(contact))) {
+                        // A NavigationLink here renders but never pushes — swipe actions
+                        // only drive Buttons — so edit is presented as a sheet instead.
+                        Button { contactToEdit = contact } label: {
                             Label("Edit", systemImage: "pencil")
                         }
                         .tint(.blue)
@@ -92,9 +102,13 @@ struct ContactListView: View {
                             ContactRowView(contact: contact, showCity: false)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) { contactToDelete = contact } label: {
+                            Button(role: .destructive) { beginDelete(contact) } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            Button { contactToEdit = contact } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(.blue)
                         }
                     }
                 } header: {
@@ -172,8 +186,22 @@ struct ContactListView: View {
 
     // MARK: - Delete
 
+    private func beginDelete(_ contact: Contact) {
+        contactToDeleteName = contact.name
+        contactToDelete = contact
+    }
+
     private func deleteContact(_ contact: Contact) {
+        // Cancel first: once the model is deleted its id is no longer readable, and a
+        // stale reminder would fire for a contact that no longer exists.
+        NotificationService.shared.cancelReconnect(id: contact.id)
         modelContext.delete(contact)
+        do {
+            try modelContext.save()
+        } catch {
+            // The contact stays visible if this fails, which is the safe outcome.
+            print("Failed to delete contact: \(error.localizedDescription)")
+        }
     }
 }
 

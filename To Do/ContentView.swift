@@ -141,7 +141,7 @@ struct ContentView: View {
                 Button("Delete Account", role: .destructive, action: onDeleteAccount)
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("All your lists and tasks will be permanently deleted. This cannot be undone.")
+                Text("All your lists, tasks, contacts, and interaction history will be permanently deleted from this device and from iCloud. This cannot be undone.")
             }
             .onChange(of: lists) { _, updatedLists in
                 if updatedLists.isEmpty {

@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import AuthenticationServices
+import UserNotifications
 
 @main
 struct To_DoApp: App {
@@ -18,6 +19,7 @@ struct To_DoApp: App {
 
     @State private var authErrorMessage: String?
     @State private var storageWarningMessage: String?
+    @State private var accountDeletionErrorMessage: String?
     private let launchArguments = ProcessInfo.processInfo.arguments
     private let storageBootstrap: StorageBootstrap
 
@@ -157,6 +159,23 @@ struct To_DoApp: App {
             } message: {
                 Text(storageWarningMessage ?? "")
             }
+            .alert(
+                "Couldn't Delete Account",
+                isPresented: Binding(
+                    get: { accountDeletionErrorMessage != nil },
+                    set: { shouldShow in
+                        if !shouldShow {
+                            accountDeletionErrorMessage = nil
+                        }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    accountDeletionErrorMessage = nil
+                }
+            } message: {
+                Text(accountDeletionErrorMessage ?? "")
+            }
         }
         .modelContainer(sharedModelContainer)
     }
@@ -211,8 +230,18 @@ struct To_DoApp: App {
             try context.delete(model: Contact.self)
             try context.save()
         } catch {
-            // Continue with sign-out even if data deletion fails
+            // Do not sign out on failure: doing so would lock the user out of data that
+            // still exists, while telling them it was deleted.
+            accountDeletionErrorMessage = """
+            Your data could not be deleted. Nothing was removed, and you are still signed in.
+            Please try again.
+            Error: \(error.localizedDescription)
+            """
+            return
         }
+
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        NotificationService.shared.clearBadge()
         signOut()
     }
 
@@ -266,14 +295,14 @@ private struct SignInView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
 
-            Text("To Do")
+            Text("Folio")
                 .font(.largeTitle.bold())
 
-            Text("Sign in with Apple to sync your lists securely across devices.")
+            Text("Sign in with Apple to sync your tasks and contacts securely across devices.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Text("TestFlight installs on new devices work normally, but cross-device sync requires the same Apple ID on each device. Updating the app on an existing device keeps its current data.")
+            Text("Your data stays in your own private iCloud account. Syncing across devices requires the same Apple ID signed into iCloud on each one.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

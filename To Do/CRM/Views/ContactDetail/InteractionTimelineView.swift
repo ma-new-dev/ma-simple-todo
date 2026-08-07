@@ -151,14 +151,20 @@ struct AddInteractionView: View {
 
 struct ReconnectPickerView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Bindable var contact: Contact
 
     @State private var date: Date
-    @State private var clearDate: Bool = false
+    @State private var showPermissionNotice = false
 
     init(contact: Contact) {
         self.contact = contact
-        _date = State(initialValue: contact.nextReconnect ?? Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date())
+        // Seed from the existing date only when it is still in the future. The picker below
+        // is constrained to `Date()...`, so seeding it with an overdue date would let SwiftUI
+        // silently clamp the selection to today and rewrite it on Set.
+        let oneMonthOut = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
+        let upcoming = contact.nextReconnect.flatMap { $0 > Date() ? $0 : nil }
+        _date = State(initialValue: upcoming ?? oneMonthOut)
     }
 
     let presets: [(String, DateComponents)] = [
@@ -194,13 +200,15 @@ struct ReconnectPickerView: View {
 
                 Section("Custom Date") {
                     DatePicker("Date", selection: $date, in: Date()..., displayedComponents: .date)
-                        .onChange(of: date) { clearDate = false }
                 }
 
                 if contact.nextReconnect != nil {
                     Section {
+                        // Clears immediately rather than arming a flag that "Set" applies —
+                        // the deferred version gave no feedback and was silently undone by
+                        // any subsequent touch of the date picker.
                         Button("Clear Reconnect Date", role: .destructive) {
-                            clearDate = true
+                            clearReconnect()
                         }
                     }
                 }
@@ -212,16 +220,49 @@ struct ReconnectPickerView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Set") {
-                        contact.nextReconnect = clearDate ? nil : date
-                        if !clearDate {
-                            NotificationService.shared.scheduleReconnect(for: contact.name, date: date)
-                        }
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
+                    Button("Set") { Task { await setReconnect() } }
+                        .fontWeight(.semibold)
                 }
             }
+            .alert("Reminders Are Off", isPresented: $showPermissionNotice) {
+                Button("OK", role: .cancel) { dismiss() }
+            } message: {
+                Text("The reconnect date was saved, but reminders need notification permission. You can turn it on in Settings › Notifications.")
+            }
+        }
+    }
+
+    private func setReconnect() async {
+        contact.nextReconnect = date
+        contact.updatedAt = Date()
+        persist()
+
+        let result = await NotificationService.shared.scheduleReconnect(
+            id: contact.id,
+            name: contact.name,
+            date: date
+        )
+
+        if result == .permissionDenied {
+            showPermissionNotice = true
+        } else {
+            dismiss()
+        }
+    }
+
+    private func clearReconnect() {
+        NotificationService.shared.cancelReconnect(id: contact.id)
+        contact.nextReconnect = nil
+        contact.updatedAt = Date()
+        persist()
+        dismiss()
+    }
+
+    private func persist() {
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to save reconnect date: \(error.localizedDescription)")
         }
     }
 }

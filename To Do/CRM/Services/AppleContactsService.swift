@@ -90,18 +90,35 @@ final class AppleContactsService {
 
     // MARK: - Import into SwiftData
 
-    /// Returns count of newly imported contacts (skips duplicates by email)
+    /// Returns count of newly imported contacts (skips ones already in the store).
     func importIntoStore(context: ModelContext) async throws -> Int {
         let imported = try await fetchAll()
 
-        // Fetch existing emails to avoid duplicates
         let existing = try context.fetch(FetchDescriptor<Contact>())
-        let existingEmails = Set(existing.flatMap { $0.emails })
+
+        // Matching is case-insensitive, and the sets grow as we insert, so two Apple
+        // contacts sharing an address don't both come through in a single run.
+        var seenEmails = Set(existing.flatMap { $0.emails.map(Self.normalizedEmail) })
+        // A contact with no email was previously never considered a duplicate, so every
+        // phone-only contact was re-imported in full on each run. Fall back to phone, then
+        // to name, so those converge too.
+        var seenPhones = Set(existing.flatMap { $0.phones.map(Self.normalizedPhone) })
+        var seenNames = Set(existing.map { Self.normalizedName($0.name) })
 
         var count = 0
         for imp in imported {
-            // Skip if we already have a contact with any of these emails
-            let isDuplicate = imp.emails.contains(where: { existingEmails.contains($0) })
+            let emails = imp.emails.map(Self.normalizedEmail)
+            let phones = imp.phones.map(Self.normalizedPhone)
+            let name = Self.normalizedName(imp.name)
+
+            let isDuplicate: Bool
+            if !emails.isEmpty {
+                isDuplicate = emails.contains(where: seenEmails.contains)
+            } else if !phones.isEmpty {
+                isDuplicate = phones.contains(where: seenPhones.contains)
+            } else {
+                isDuplicate = !name.isEmpty && seenNames.contains(name)
+            }
             guard !isDuplicate else { continue }
 
             let contact = Contact(
@@ -116,9 +133,31 @@ final class AppleContactsService {
             )
             contact.photoData = imp.photoData
             context.insert(contact)
+
+            seenEmails.formUnion(emails)
+            seenPhones.formUnion(phones)
+            if !name.isEmpty { seenNames.insert(name) }
             count += 1
         }
+
+        // Persist explicitly: relying on autosave meant an import was lost outright if the
+        // app was backgrounded or killed before the next autosave tick.
+        if count > 0 {
+            try context.save()
+        }
         return count
+    }
+
+    private static func normalizedEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func normalizedPhone(_ value: String) -> String {
+        String(value.filter(\.isNumber).suffix(10))
+    }
+
+    private static func normalizedName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 

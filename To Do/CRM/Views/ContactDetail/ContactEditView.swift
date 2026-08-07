@@ -1,10 +1,26 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import ImageIO
+import UniformTypeIdentifiers
 
 enum ContactEditMode {
     case add
     case edit(Contact)
+}
+
+/// A single text entry in a repeatable field (email, phone).
+///
+/// Rows carry a stable identity so `ForEach` keeps tracking the right row when one is
+/// removed. Identifying by array index instead traps with "Index out of range", because
+/// SwiftUI re-evaluates a stale row body against the shrunken array.
+private struct EditableValue: Identifiable {
+    let id = UUID()
+    var text: String
+
+    init(_ text: String = "") {
+        self.text = text
+    }
 }
 
 struct ContactEditView: View {
@@ -17,8 +33,8 @@ struct ContactEditView: View {
     @State private var name: String = ""
     @State private var city: String = ""
     @State private var country: String = ""
-    @State private var emails: [String] = [""]
-    @State private var phones: [String] = [""]
+    @State private var emails: [EditableValue] = [EditableValue()]
+    @State private var phones: [EditableValue] = [EditableValue()]
     @State private var linkedInURL: String = ""
     @State private var twitterURL: String = ""
     @State private var instagramURL: String = ""
@@ -40,9 +56,11 @@ struct ContactEditView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
 
-    // LinkedIn fetch
-    @State private var isFetchingLinkedIn = false
-    @State private var linkedInError: String?
+    @State private var hasLoadedContact = false
+    @State private var isSaving = false
+    @State private var photoError: String?
+    @State private var saveError: String?
+    @State private var showReminderPermissionNotice = false
 
     private var isEditing: Bool {
         if case .edit = mode { return true }
@@ -69,49 +87,52 @@ struct ContactEditView: View {
 
                 // Contact Details
                 Section("Email") {
-                    ForEach($emails.indices, id: \.self) { i in
+                    ForEach($emails) { $entry in
                         HStack {
-                            TextField("Email \(i + 1)", text: $emails[i])
+                            TextField("Email", text: $entry.text)
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
                             if emails.count > 1 {
-                                Button(role: .destructive) { emails.remove(at: i) } label: {
-                                    Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                                removeButton(label: "Remove email") {
+                                    emails.removeAll { $0.id == entry.id }
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
-                    Button(action: { emails.append("") }) {
+                    Button(action: { emails.append(EditableValue()) }) {
                         Label("Add Email", systemImage: "plus.circle.fill")
                     }
                 }
 
                 Section("Phone") {
-                    ForEach($phones.indices, id: \.self) { i in
+                    ForEach($phones) { $entry in
                         HStack {
-                            TextField("Phone \(i + 1)", text: $phones[i])
+                            TextField("Phone", text: $entry.text)
                                 .keyboardType(.phonePad)
                             if phones.count > 1 {
-                                Button(role: .destructive) { phones.remove(at: i) } label: {
-                                    Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                                removeButton(label: "Remove phone") {
+                                    phones.removeAll { $0.id == entry.id }
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
-                    Button(action: { phones.append("") }) {
+                    Button(action: { phones.append(EditableValue()) }) {
                         Label("Add Phone", systemImage: "plus.circle.fill")
                     }
                 }
 
-                // Social / LinkedIn
+                // Social
                 Section("Social") {
-                    linkedInRow
+                    TextField("LinkedIn URL", text: $linkedInURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                     TextField("Twitter URL", text: $twitterURL)
                         .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                     TextField("Instagram URL", text: $instagramURL)
                         .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
 
                 // CRM
@@ -138,6 +159,7 @@ struct ContactEditView: View {
                                 .foregroundStyle(Color("AccentColor"))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Add tag")
                         .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
@@ -148,26 +170,30 @@ struct ContactEditView: View {
 
                     Toggle("Last Contacted", isOn: $hasLastContacted)
                     if hasLastContacted {
-                        DatePicker("", selection: $lastContacted, displayedComponents: .date)
+                        DatePicker("Last contacted date", selection: $lastContacted, displayedComponents: .date)
                             .datePickerStyle(.compact)
+                            .labelsHidden()
                     }
 
                     Toggle("Last Met In Person", isOn: $hasLastMet)
                     if hasLastMet {
-                        DatePicker("", selection: $lastMetInPerson, displayedComponents: .date)
+                        DatePicker("Last met in person date", selection: $lastMetInPerson, displayedComponents: .date)
                             .datePickerStyle(.compact)
+                            .labelsHidden()
                     }
 
                     Toggle("Next Reconnect", isOn: $hasNextReconnect)
                     if hasNextReconnect {
-                        DatePicker("", selection: $nextReconnect, displayedComponents: .date)
+                        DatePicker("Next reconnect date", selection: $nextReconnect, displayedComponents: .date)
                             .datePickerStyle(.compact)
+                            .labelsHidden()
                     }
 
                     Toggle("Birthday", isOn: $hasBirthday)
                     if hasBirthday {
-                        DatePicker("", selection: $birthday, displayedComponents: .date)
+                        DatePicker("Birthday date", selection: $birthday, displayedComponents: .date)
                             .datePickerStyle(.compact)
+                            .labelsHidden()
                     }
                 }
 
@@ -175,6 +201,7 @@ struct ContactEditView: View {
                 Section("Notes") {
                     TextEditor(text: $notes)
                         .frame(minHeight: 80)
+                        .accessibilityLabel("Notes")
                 }
             }
             .navigationTitle(isEditing ? "Edit Contact" : "New Contact")
@@ -184,19 +211,34 @@ struct ContactEditView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button("Save") { Task { await save() } }
                         .fontWeight(.semibold)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(isSaving || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+            .alert("Couldn't Save Contact", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button("OK", role: .cancel) { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
+            }
+            .alert("Reminders Are Off", isPresented: $showReminderPermissionNotice) {
+                Button("OK", role: .cancel) { dismiss() }
+            } message: {
+                Text("The contact was saved, but reconnect reminders need notification permission. You can turn it on in Settings › Notifications.")
             }
         }
-        .onAppear { loadExistingContact() }
-        .onChange(of: photoItem) { _, new in
-            Task {
-                if let data = try? await new?.loadTransferable(type: Data.self) {
-                    photoData = data
-                }
-            }
+        .task {
+            // `onAppear` re-fires when the PhotosPicker is dismissed, which would wipe
+            // in-progress edits. Load exactly once instead.
+            guard !hasLoadedContact else { return }
+            hasLoadedContact = true
+            loadExistingContact()
+        }
+        .onChange(of: photoItem) { _, newItem in
+            Task { await loadPhoto(from: newItem) }
         }
     }
 
@@ -225,43 +267,28 @@ struct ContactEditView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Contact photo")
 
                 TextField("Full Name", text: $name)
                     .font(.headline)
             }
             .padding(.vertical, 4)
-        }
-    }
-
-    // MARK: - LinkedIn Row
-
-    private var linkedInRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                TextField("LinkedIn URL", text: $linkedInURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                if !linkedInURL.isEmpty {
-                    Button(action: fetchLinkedIn) {
-                        if isFetchingLinkedIn {
-                            ProgressView().scaleEffect(0.8)
-                        } else {
-                            Label("Auto-fill", systemImage: "wand.and.stars")
-                                .font(.caption)
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(isFetchingLinkedIn)
-                }
-            }
-            if let err = linkedInError {
-                Text(err).font(.caption).foregroundStyle(.red)
+        } footer: {
+            if let photoError {
+                Text(photoError).foregroundStyle(.red)
             }
         }
     }
 
     // MARK: - Helpers
+
+    private func removeButton(label: String, action: @escaping () -> Void) -> some View {
+        Button(role: .destructive, action: action) {
+            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
 
     private func addTag() {
         let tag = newTag.trimmingCharacters(in: .whitespaces)
@@ -270,27 +297,42 @@ struct ContactEditView: View {
         newTag = ""
     }
 
-    private func fetchLinkedIn() {
-        guard !linkedInURL.isEmpty else { return }
-        isFetchingLinkedIn = true
-        linkedInError = nil
-        Task {
-            do {
-                let info = try await LinkedInService.shared.fetchBasicInfo(url: linkedInURL)
-                await MainActor.run {
-                    if !info.name.isEmpty && name.isEmpty { name = info.name }
-                    if !info.jobTitle.isEmpty && jobTitle.isEmpty { jobTitle = info.jobTitle }
-                    if !info.company.isEmpty && company.isEmpty { company = info.company }
-                    if !info.city.isEmpty && city.isEmpty { city = info.city }
-                    isFetchingLinkedIn = false
-                }
-            } catch {
-                await MainActor.run {
-                    linkedInError = "Could not auto-fill. Please fill in manually."
-                    isFetchingLinkedIn = false
-                }
-            }
+    /// Loads a picked image and shrinks it before it ever reaches the store.
+    ///
+    /// Contact photos live inline in a CloudKit-backed store, and CloudKit silently drops
+    /// records over ~1 MB. A full-resolution iPhone photo is 3-12 MB, so storing one would
+    /// stop that contact syncing with no visible error. Downsampling keeps avatars well
+    /// under the limit.
+    private func loadPhoto(from item: PhotosPickerItem?) async {
+        guard let item else { return }
+        photoError = nil
+
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            photoError = "Couldn't load that image. Please try another."
+            return
         }
+
+        guard let downsampled = Self.downsampledAvatar(from: data) else {
+            photoError = "Couldn't process that image. Please try another."
+            return
+        }
+
+        photoData = downsampled
+    }
+
+    /// Produces a small JPEG suitable for an avatar (typically 30-60 KB).
+    private static func downsampledAvatar(from data: Data, maxPixelSize: CGFloat = 512) -> Data? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+
+        return UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.8)
     }
 
     private func loadExistingContact() {
@@ -298,8 +340,8 @@ struct ContactEditView: View {
         name            = contact.name
         city            = contact.city
         country         = contact.country
-        emails          = contact.emails.isEmpty ? [""] : contact.emails
-        phones          = contact.phones.isEmpty ? [""] : contact.phones
+        emails          = contact.emails.isEmpty ? [EditableValue()] : contact.emails.map(EditableValue.init)
+        phones          = contact.phones.isEmpty ? [EditableValue()] : contact.phones.map(EditableValue.init)
         linkedInURL     = contact.linkedInURL
         twitterURL      = contact.twitterURL
         instagramURL    = contact.instagramURL
@@ -317,14 +359,21 @@ struct ContactEditView: View {
         if let d = contact.birthday        { birthday = d;         hasBirthday = true }
     }
 
-    private func save() {
-        let cleanEmails = emails.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        let cleanPhones = phones.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    private func save() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let cleanEmails = emails.map { $0.text.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let cleanPhones = phones.map { $0.text.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+
+        let contact: Contact
 
         switch mode {
         case .add:
-            let contact = Contact(
-                name:           name.trimmingCharacters(in: .whitespaces),
+            let newContact = Contact(
+                name:           trimmedName,
                 city:           city,
                 country:        country,
                 emails:         cleanEmails,
@@ -343,38 +392,57 @@ struct ContactEditView: View {
                 nextReconnect:  hasNextReconnect ? nextReconnect : nil,
                 birthday:       hasBirthday ? birthday : nil
             )
-            contact.photoData = photoData
-            modelContext.insert(contact)
+            newContact.photoData = photoData
+            modelContext.insert(newContact)
+            contact = newContact
 
-        case .edit(let contact):
-            contact.name           = name.trimmingCharacters(in: .whitespaces)
-            contact.city           = city
-            contact.country        = country
-            contact.emails         = cleanEmails
-            contact.phones         = cleanPhones
-            contact.linkedInURL    = linkedInURL
-            contact.twitterURL     = twitterURL
-            contact.instagramURL   = instagramURL
-            contact.company        = company
-            contact.jobTitle       = jobTitle
-            contact.tags           = tags
-            contact.priority       = priority
-            contact.howWeMet       = howWeMet
-            contact.notes          = notes
-            contact.photoData      = photoData
-            contact.lastContacted  = hasLastContacted ? lastContacted : nil
-            contact.lastMetInPerson = hasLastMet ? lastMetInPerson : nil
-            contact.nextReconnect  = hasNextReconnect ? nextReconnect : nil
-            contact.birthday       = hasBirthday ? birthday : nil
-            contact.updatedAt      = Date()
+        case .edit(let existing):
+            existing.name            = trimmedName
+            existing.city            = city
+            existing.country         = country
+            existing.emails          = cleanEmails
+            existing.phones          = cleanPhones
+            existing.linkedInURL     = linkedInURL
+            existing.twitterURL      = twitterURL
+            existing.instagramURL    = instagramURL
+            existing.company         = company
+            existing.jobTitle        = jobTitle
+            existing.tags            = tags
+            existing.priority        = priority
+            existing.howWeMet        = howWeMet
+            existing.notes           = notes
+            existing.photoData       = photoData
+            existing.lastContacted   = hasLastContacted ? lastContacted : nil
+            existing.lastMetInPerson = hasLastMet ? lastMetInPerson : nil
+            existing.nextReconnect   = hasNextReconnect ? nextReconnect : nil
+            existing.birthday        = hasBirthday ? birthday : nil
+            existing.updatedAt       = Date()
+            contact = existing
         }
 
-        // Schedule notification if reconnect date was set
+        // Persist explicitly rather than relying on autosave, so the edit survives the app
+        // being backgrounded or killed straight after saving.
+        do {
+            try modelContext.save()
+        } catch {
+            saveError = error.localizedDescription
+            return
+        }
+
+        let contactID = contact.id
+
         if hasNextReconnect {
-            NotificationService.shared.scheduleReconnect(
-                for: name.trimmingCharacters(in: .whitespaces),
+            let result = await NotificationService.shared.scheduleReconnect(
+                id: contactID,
+                name: trimmedName,
                 date: nextReconnect
             )
+            if result == .permissionDenied {
+                showReminderPermissionNotice = true
+                return
+            }
+        } else {
+            NotificationService.shared.cancelReconnect(id: contactID)
         }
 
         dismiss()
