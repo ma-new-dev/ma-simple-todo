@@ -18,7 +18,10 @@ private struct EditableValue: Identifiable {
     let id = UUID()
     var text: String
 
-    init(_ text: String = "") {
+    // The target builds with -default-isolation=MainActor, which would make this init
+    // MainActor-isolated and warn when passed to a nonisolated `map`. It touches nothing
+    // shared, so opt it out.
+    nonisolated init(_ text: String = "") {
         self.text = text
     }
 }

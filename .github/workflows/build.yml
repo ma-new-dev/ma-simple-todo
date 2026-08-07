@@ -5,8 +5,10 @@ name: Build
 # pass", not "can it ship". Archiving for TestFlight is a separate, signed process.
 
 on:
+  # Only the default branch on push. Branch pushes are covered by pull_request, and
+  # running both would double the bill — macOS runners consume minutes at 10x.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

@@ -183,7 +183,6 @@ struct ReconnectPickerView: View {
                         Button(action: {
                             if let d = Calendar.current.date(byAdding: components, to: Date()) {
                                 date = d
-                                clearDate = false
                             }
                         }) {
                             HStack {
