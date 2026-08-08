@@ -7,6 +7,8 @@
 
 import XCTest
 
+/// Smoke test that the app launches in each UI configuration (portrait/landscape,
+/// light/dark) and captures a screenshot of each.
 final class To_DoUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
@@ -20,10 +22,17 @@ final class To_DoUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        // Required, and easy to miss: a UI test's target app only sees arguments set here.
+        // The scheme's test-action arguments apply to the host app for unit tests, not to
+        // XCUIApplication. Without this the app opens its CloudKit-backed store, which
+        // cannot initialize in an unsigned CI build and takes the process down.
+        app.launchArguments += ["UITEST_IN_MEMORY_STORE"]
         app.launch()
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
+        XCTAssertTrue(
+            app.buttons["newListRowTrigger"].waitForExistence(timeout: 10),
+            "The app should reach its task list on launch"
+        )
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Launch Screen"
