@@ -55,10 +55,17 @@ re-uploading**, even for an identical version string.
 One-time, in the [Apple Developer portal](https://developer.apple.com/account):
 
 - Apple Distribution certificate installed in your login keychain.
-- App ID `com.matodoapp.todo` with **iCloud (CloudKit)** and **Sign in with Apple**
-  capabilities — these must match `To Do/To_Do.entitlements` exactly, or the upload is
-  rejected with a provisioning-profile mismatch.
+- App ID `com.matodoapp.todo` with the **iCloud (CloudKit)** capability. The entitlements
+  and the App ID must match exactly, or the upload is rejected with a provisioning-profile
+  mismatch.
 - An App Store provisioning profile for that App ID.
+
+> **Changed in 2.3:** Sign in with Apple was removed, so
+> `com.apple.developer.applesignin` is no longer in `To Do/To_Do.entitlements`. Turn the
+> **Sign in with Apple** capability off on the App ID as well, and regenerate the
+> provisioning profile — a profile carrying an entitlement the binary no longer requests
+> is fine, but keeping the capability invites reviewers to ask about account deletion for
+> a feature that is gone.
 
 In Xcode: **Signing & Capabilities** → Team set, "Automatically manage signing" on.
 
@@ -127,15 +134,20 @@ The paths most likely to break, and least covered by tests:
 - Pick a contact photo, save, and confirm it appears on a second device (this is the
   CloudKit record-size path).
 - Set a reconnect date, accept the notification prompt, then clear the date.
-- Run Apple Contacts import twice and confirm no duplicates on the second run.
-- Delete Account, then confirm tasks *and* contacts are gone on relaunch.
+- Run Apple Contacts import twice and confirm no duplicates on the second run. On a large
+  address book, check the spinner animates — it should no longer block the main thread.
+- **Upgrade test, important for 2.3**: install the current App Store build first, add a
+  list and a contact, then install this build over it. Sign in with Apple was removed, so
+  confirm existing data is still there and still syncs.
+- Erase All Data, then confirm tasks *and* contacts are gone on relaunch.
 
-## Known blockers before a public release
+## Known gaps
 
-- **Sign in with Apple**: Delete Account does not revoke the Apple ID token, which Apple
-  requires. Revocation needs a signed `client_secret` and therefore a backend. The app has
-  no server, so the realistic fix is to remove Sign in with Apple entirely — which also
-  clears the Guideline 5.1.1(v) risk of gating a serverless app behind registration.
-- Contacts import blocks the main thread; large address books risk a watchdog termination.
-
-These do not block TestFlight. They do block App Store review.
+- The `id` on `Contact` and `Interaction` is not unique. Two devices creating the same
+  logical contact before syncing will produce duplicates, and nothing reconciles them.
+  CloudKit does not support `@Attribute(.unique)`, so this needs application-level
+  merging.
+- Contact photos are downsampled on import and on pick, but any photo stored by an
+  earlier build is still full-resolution and may exceed CloudKit's record limit. Those
+  contacts will not sync until the photo is re-picked.
+- UI tests cover the task flows only; the CRM tab has no automated coverage.

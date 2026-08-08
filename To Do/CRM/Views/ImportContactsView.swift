@@ -24,7 +24,7 @@ struct ImportContactsView: View {
                 } header: {
                     Text("Import From")
                 } footer: {
-                    Text("Only new contacts are imported. Duplicates (matched by email) are skipped.")
+                    Text("Only new contacts are imported — anyone already here is skipped, matched on email, then phone number, then name.\n\nImported contacts are stored in your own private iCloud account so they sync across your devices. They are never sent anywhere else.")
                 }
 
                 if let count = importCount {

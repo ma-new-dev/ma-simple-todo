@@ -11,6 +11,10 @@ struct CRMRootView: View {
     }
 
     var body: some View {
+        // The single navigation stack for this tab. DashboardView and ContactListView used
+        // to open their own as well, which produced two stacked navigation bars, a
+        // duplicated title, and a search field rendered under the outer large title.
+        // They now set their own title and toolbar items on this stack.
         NavigationStack {
             VStack(spacing: 0) {
                 Picker("CRM Section", selection: $selectedTab) {
@@ -20,6 +24,7 @@ struct CRMRootView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
+                .accessibilityIdentifier("crmSectionPicker")
 
                 Divider()
 
@@ -29,8 +34,6 @@ struct CRMRootView: View {
                     ContactListView()
                 }
             }
-            .navigationTitle(selectedTab == 0 ? "Dashboard" : "Contacts")
-            .navigationBarTitleDisplayMode(.large)
         }
     }
 }

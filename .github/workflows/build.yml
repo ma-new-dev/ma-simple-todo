@@ -80,14 +80,27 @@ jobs:
       - name: Unit tests
         run: |
           set -o pipefail
-          # UI tests are excluded: they need a booted simulator, are slow, and were
-          # written before the TabView was introduced. Worth re-enabling once updated.
           xcodebuild test \
             -project "To Do.xcodeproj" \
             -scheme "To Do" \
             -configuration Debug \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            -skip-testing:"To DoUITests" \
+            -only-testing:"To DoTests" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          # Split from the unit tests so a UI-test failure is distinguishable at a glance,
+          # and so the fast suite has already reported by the time these run.
+          xcodebuild test \
+            -project "To Do.xcodeproj" \
+            -scheme "To Do" \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:"To DoUITests" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""

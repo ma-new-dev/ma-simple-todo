@@ -21,40 +21,41 @@ struct ContactListView: View {
 
     var filtered: [Contact] { vm.filtered(contacts) }
 
+    // Navigation is owned by CRMRootView; this view only contributes its title, toolbar,
+    // search field and destinations to that stack.
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Active filters strip
-                if vm.selectedPriority != nil || vm.selectedTag != nil || vm.selectedCity != nil {
-                    activeFiltersBar
-                }
+        VStack(spacing: 0) {
+            // Active filters strip
+            if vm.selectedPriority != nil || vm.selectedTag != nil || vm.selectedCity != nil {
+                activeFiltersBar
+            }
 
-                Group {
-                    switch viewMode {
-                    case .list: listContent
-                    case .city: byCityContent
-                    }
+            Group {
+                switch viewMode {
+                case .list: listContent
+                case .city: byCityContent
                 }
             }
-            .searchable(text: $vm.searchText, prompt: "Search contacts…")
-            .navigationTitle("Contacts")
-            .toolbar { toolbarContent }
-            .sheet(isPresented: $showAddContact) { ContactEditView(mode: .add) }
-            .sheet(isPresented: $showFilters) { FilterView(vm: vm, contacts: contacts) }
-            .sheet(isPresented: $showImport) { ImportContactsView() }
-            .sheet(item: $contactToEdit) { contact in
-                ContactEditView(mode: .edit(contact))
+        }
+        .searchable(text: $vm.searchText, prompt: "Search contacts…")
+        .navigationTitle("Contacts")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar { toolbarContent }
+        .sheet(isPresented: $showAddContact) { ContactEditView(mode: .add) }
+        .sheet(isPresented: $showFilters) { FilterView(vm: vm, contacts: contacts) }
+        .sheet(isPresented: $showImport) { ImportContactsView() }
+        .sheet(item: $contactToEdit) { contact in
+            ContactEditView(mode: .edit(contact))
+        }
+        .confirmationDialog("Delete \(contactToDeleteName)?", isPresented: Binding(
+            get: { contactToDelete != nil },
+            set: { if !$0 { contactToDelete = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let c = contactToDelete { deleteContact(c) }
+                contactToDelete = nil
             }
-            .confirmationDialog("Delete \(contactToDeleteName)?", isPresented: Binding(
-                get: { contactToDelete != nil },
-                set: { if !$0 { contactToDelete = nil } }
-            ), titleVisibility: .visible) {
-                Button("Delete", role: .destructive) {
-                    if let c = contactToDelete { deleteContact(c) }
-                    contactToDelete = nil
-                }
-                Button("Cancel", role: .cancel) { contactToDelete = nil }
-            }
+            Button("Cancel", role: .cancel) { contactToDelete = nil }
         }
     }
 
@@ -94,8 +95,20 @@ struct ContactListView: View {
     // MARK: - By City Content
 
     private var byCityContent: some View {
-        List {
-            ForEach(vm.groupedByCity(contacts), id: \.city) { group in
+        // Computed once here rather than inside the ForEach argument, where it re-ran the
+        // whole filter pass on every render.
+        let groups = vm.groupedByCity(contacts)
+
+        return List {
+            if groups.isEmpty {
+                ContentUnavailableView(
+                    "No contacts found",
+                    systemImage: "person.slash",
+                    description: Text(vm.searchText.isEmpty ? "Add your first contact" : "Try a different search")
+                )
+                .listRowSeparator(.hidden)
+            }
+            ForEach(groups, id: \.city) { group in
                 Section {
                     ForEach(group.contacts) { contact in
                         NavigationLink(destination: ContactDetailView(contact: contact)) {

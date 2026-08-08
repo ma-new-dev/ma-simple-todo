@@ -7,72 +7,111 @@
 
 import SwiftUI
 import SwiftData
-import AuthenticationServices
 import UserNotifications
 
 @main
 struct To_DoApp: App {
-    private static let cloudKitContainerID = "iCloud.com.matodoapp.todo"
-    @AppStorage("isSignedIn") private var isSignedIn = false
-    @AppStorage("signedInEmail") private var signedInEmail = ""
-    @AppStorage("appleUserID") private var appleUserID = ""
+    // fileprivate so StorageBootstrap, below, can read it.
+    fileprivate static let cloudKitContainerID = "iCloud.com.matodoapp.todo"
 
-    @State private var authErrorMessage: String?
     @State private var storageWarningMessage: String?
-    @State private var accountDeletionErrorMessage: String?
+    @State private var eraseDataErrorMessage: String?
     private let launchArguments = ProcessInfo.processInfo.arguments
-    private let storageBootstrap: StorageBootstrap
+    private let storage: StorageBootstrap
 
     init() {
-        let bootstrap = StorageBootstrap.make()
-        storageBootstrap = bootstrap
-        _storageWarningMessage = State(initialValue: bootstrap.warningMessage)
+        storage = StorageBootstrap.make()
+        if case .ready(_, let warning) = storage {
+            _storageWarningMessage = State(initialValue: warning)
+        }
     }
 
-    private var sharedModelContainer: ModelContainer {
-        storageBootstrap.container
-    }
-
-    fileprivate static func makeCloudKitModelContainer() -> StorageBootstrap {
-        let launchArguments = ProcessInfo.processInfo.arguments
-        let isInMemoryStore = launchArguments.contains("UITEST_IN_MEMORY_STORE")
-        let schema = Schema([
-            TodoList.self,
-            TaskItem.self,
-            Contact.self,
-            Interaction.self,
-        ])
-        let cloudKitConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: isInMemoryStore,
-            cloudKitDatabase: isInMemoryStore ? .none : .private(Self.cloudKitContainerID)
-        )
-        let localOnlyConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: isInMemoryStore,
-            cloudKitDatabase: .none
-        )
-
-        do {
-            let container = try ModelContainer(for: schema, configurations: [cloudKitConfiguration])
-            return StorageBootstrap(container: container, warningMessage: nil)
-        } catch let cloudKitError {
-            do {
-                // Fall back to local-only storage if CloudKit-backed container setup fails.
-                let localContainer = try ModelContainer(for: schema, configurations: [localOnlyConfiguration])
-                return StorageBootstrap(
-                    container: localContainer,
-                    warningMessage: """
-                    Cloud sync initialization failed, so this device is using local-only storage.
-                    Existing data on this device is still retained and will stay available here.
-                    Error: \(cloudKitError.localizedDescription)
-                    """
-                )
-            } catch {
-                fatalError("Could not create ModelContainer: \(error)")
+    var body: some Scene {
+        WindowGroup {
+            switch storage {
+            case .ready(let container, _):
+                mainInterface(container: container)
+                    .modelContainer(container)
+            case .failed(let message):
+                StorageFailureView(message: message)
             }
         }
     }
+
+    // MARK: - Interface
+
+    @ViewBuilder
+    private func mainInterface(container: ModelContainer) -> some View {
+        ContentView(
+            onEraseAllData: { eraseAllData(in: container) },
+            initialTab: isScreenshotMode ? screenshotInitialTab : 0,
+            initialCRMTab: isScreenshotMode ? screenshotInitialCRMTab : 0,
+            autoSelectFirstList: isScreenshotMode ? screenshotAutoSelectList : false
+        )
+        .onAppear {
+            if isScreenshotMode {
+                SampleData.inject(into: container.mainContext)
+            }
+        }
+        .alert(
+            "Cloud Sync Disabled",
+            isPresented: Binding(
+                get: { storageWarningMessage != nil },
+                set: { shouldShow in
+                    if !shouldShow {
+                        storageWarningMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                storageWarningMessage = nil
+            }
+        } message: {
+            Text(storageWarningMessage ?? "")
+        }
+        .alert(
+            "Couldn't Erase Data",
+            isPresented: Binding(
+                get: { eraseDataErrorMessage != nil },
+                set: { shouldShow in
+                    if !shouldShow {
+                        eraseDataErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                eraseDataErrorMessage = nil
+            }
+        } message: {
+            Text(eraseDataErrorMessage ?? "")
+        }
+    }
+
+    // MARK: - Erase All Data
+
+    private func eraseAllData(in container: ModelContainer) {
+        let context = container.mainContext
+        do {
+            try context.delete(model: TaskItem.self)
+            try context.delete(model: TodoList.self)
+            try context.delete(model: Interaction.self)
+            try context.delete(model: Contact.self)
+            try context.save()
+        } catch {
+            eraseDataErrorMessage = """
+            Your data could not be erased, so nothing was removed. Please try again.
+            Error: \(error.localizedDescription)
+            """
+            return
+        }
+
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        NotificationService.shared.clearBadge()
+    }
+
+    // MARK: - Screenshot mode
 
     private var isScreenshotMode: Bool {
         launchArguments.contains("SCREENSHOT_MODE")
@@ -100,233 +139,80 @@ struct To_DoApp: App {
     private var screenshotAutoSelectList: Bool {
         screenshotScreen == "tasks_detail"
     }
-
-    var body: some Scene {
-        WindowGroup {
-            Group {
-                if shouldSkipAuth || isSignedIn {
-                    ContentView(
-                        userEmail: displayedEmail,
-                        onSignOut: signOut,
-                        onDeleteAccount: deleteAccount,
-                        initialTab: isScreenshotMode ? screenshotInitialTab : 0,
-                        initialCRMTab: isScreenshotMode ? screenshotInitialCRMTab : 0,
-                        autoSelectFirstList: isScreenshotMode ? screenshotAutoSelectList : false
-                    )
-                    .onAppear {
-                        if isScreenshotMode {
-                            SampleData.inject(into: sharedModelContainer.mainContext)
-                        }
-                    }
-                } else {
-                    SignInView(handleSignInResult: handleSignInResult)
-                }
-            }
-            .alert(
-                "Sign In Error",
-                isPresented: Binding(
-                    get: { authErrorMessage != nil },
-                    set: { shouldShow in
-                        if !shouldShow {
-                            authErrorMessage = nil
-                        }
-                    }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    authErrorMessage = nil
-                }
-            } message: {
-                Text(authErrorMessage ?? "Unknown error")
-            }
-            .task {
-                await validateStoredAppleCredentialIfNeeded()
-            }
-            .alert(
-                "Cloud Sync Disabled",
-                isPresented: Binding(
-                    get: { storageWarningMessage != nil },
-                    set: { shouldShow in
-                        if !shouldShow {
-                            storageWarningMessage = nil
-                        }
-                    }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    storageWarningMessage = nil
-                }
-            } message: {
-                Text(storageWarningMessage ?? "")
-            }
-            .alert(
-                "Couldn't Delete Account",
-                isPresented: Binding(
-                    get: { accountDeletionErrorMessage != nil },
-                    set: { shouldShow in
-                        if !shouldShow {
-                            accountDeletionErrorMessage = nil
-                        }
-                    }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    accountDeletionErrorMessage = nil
-                }
-            } message: {
-                Text(accountDeletionErrorMessage ?? "")
-            }
-        }
-        .modelContainer(sharedModelContainer)
-    }
-
-    private var shouldSkipAuth: Bool {
-        launchArguments.contains("UITEST_DISABLE_AUTH")
-    }
-
-    private var displayedEmail: String {
-        signedInEmail.isEmpty ? "Apple User" : signedInEmail
-    }
-
-    private func handleSignInResult(_ result: Result<ASAuthorization, Error>) {
-        switch result {
-        case .success(let authorization):
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                authErrorMessage = AppleAuthError.invalidCredential.errorDescription
-                return
-            }
-
-            appleUserID = credential.user
-
-            if let email = credential.email, !email.isEmpty {
-                signedInEmail = email
-            } else if signedInEmail.isEmpty {
-                signedInEmail = "Apple User"
-            }
-
-            isSignedIn = true
-            authErrorMessage = nil
-
-        case .failure(let error):
-            if let appleError = error as? ASAuthorizationError, appleError.code == .canceled {
-                return
-            }
-            authErrorMessage = error.localizedDescription
-        }
-    }
-
-    private func signOut() {
-        signedInEmail = ""
-        appleUserID = ""
-        isSignedIn = false
-    }
-
-    private func deleteAccount() {
-        let context = sharedModelContainer.mainContext
-        do {
-            try context.delete(model: TaskItem.self)
-            try context.delete(model: TodoList.self)
-            try context.delete(model: Interaction.self)
-            try context.delete(model: Contact.self)
-            try context.save()
-        } catch {
-            // Do not sign out on failure: doing so would lock the user out of data that
-            // still exists, while telling them it was deleted.
-            accountDeletionErrorMessage = """
-            Your data could not be deleted. Nothing was removed, and you are still signed in.
-            Please try again.
-            Error: \(error.localizedDescription)
-            """
-            return
-        }
-
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-        NotificationService.shared.clearBadge()
-        signOut()
-    }
-
-    private func validateStoredAppleCredentialIfNeeded() async {
-        guard !shouldSkipAuth else { return }
-        guard isSignedIn, !appleUserID.isEmpty else { return }
-
-        let provider = ASAuthorizationAppleIDProvider()
-
-        do {
-            let state = try await credentialState(for: appleUserID, provider: provider)
-            if state != .authorized {
-                signOut()
-            }
-        } catch {
-            authErrorMessage = error.localizedDescription
-        }
-    }
-
-    private func credentialState(
-        for userID: String,
-        provider: ASAuthorizationAppleIDProvider
-    ) async throws -> ASAuthorizationAppleIDProvider.CredentialState {
-        try await withCheckedThrowingContinuation { continuation in
-            provider.getCredentialState(forUserID: userID) { state, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                continuation.resume(returning: state)
-            }
-        }
-    }
 }
 
-fileprivate struct StorageBootstrap {
-    let container: ModelContainer
-    let warningMessage: String?
+// MARK: - Storage
+
+fileprivate enum StorageBootstrap {
+    /// The store opened. `warning` is set when CloudKit was unavailable and the app fell
+    /// back to local-only storage, so the user can be told sync is off.
+    case ready(container: ModelContainer, warning: String?)
+    /// Neither the CloudKit-backed nor the local-only store could be opened.
+    case failed(message: String)
 
     static func make() -> StorageBootstrap {
-        To_DoApp.makeCloudKitModelContainer()
+        let launchArguments = ProcessInfo.processInfo.arguments
+        let isInMemoryStore = launchArguments.contains("UITEST_IN_MEMORY_STORE")
+        let schema = Schema([
+            TodoList.self,
+            TaskItem.self,
+            Contact.self,
+            Interaction.self,
+        ])
+        let cloudKitConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: isInMemoryStore,
+            cloudKitDatabase: isInMemoryStore ? .none : .private(To_DoApp.cloudKitContainerID)
+        )
+        let localOnlyConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: isInMemoryStore,
+            cloudKitDatabase: .none
+        )
+
+        do {
+            let container = try ModelContainer(for: schema, configurations: [cloudKitConfiguration])
+            return .ready(container: container, warning: nil)
+        } catch let cloudKitError {
+            do {
+                // Fall back to local-only storage if CloudKit-backed setup fails.
+                let localContainer = try ModelContainer(for: schema, configurations: [localOnlyConfiguration])
+                return .ready(
+                    container: localContainer,
+                    warning: """
+                    Cloud sync initialization failed, so this device is using local-only storage.
+                    Existing data on this device is still retained and will stay available here.
+                    Error: \(cloudKitError.localizedDescription)
+                    """
+                )
+            } catch {
+                // Previously a fatalError. A launch crash tells the user nothing and loses
+                // the underlying error; an explanation they can screenshot is more useful.
+                return .failed(message: error.localizedDescription)
+            }
+        }
     }
 }
 
-private struct SignInView: View {
-    let handleSignInResult: (Result<ASAuthorization, Error>) -> Void
+/// Shown when no store could be opened at all. The app cannot function without one, but
+/// crashing on launch is strictly worse than explaining why.
+private struct StorageFailureView: View {
+    let message: String
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checklist")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
-
-            Text("Folio")
-                .font(.largeTitle.bold())
-
-            Text("Sign in with Apple to sync your tasks and contacts securely across devices.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Text("Your data stays in your own private iCloud account. Syncing across devices requires the same Apple ID signed into iCloud on each one.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.fullName, .email]
-            } onCompletion: { result in
-                handleSignInResult(result)
+        ContentUnavailableView {
+            Label("Can't Open Your Data", systemImage: "externaldrive.badge.xmark")
+        } description: {
+            VStack(spacing: 12) {
+                Text("Folio couldn't open its local database, so it can't start.")
+                Text("Restarting your device often clears this. If it keeps happening, reinstalling the app will fix it — your data will be restored from iCloud if sync was on.")
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
-            .signInWithAppleButtonStyle(.black)
-            .frame(maxWidth: 320, minHeight: 44, maxHeight: 44)
-            .accessibilityIdentifier("appleSignInButton")
+            .multilineTextAlignment(.center)
         }
         .padding()
-    }
-}
-
-enum AppleAuthError: LocalizedError {
-    case invalidCredential
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidCredential:
-            return "Unable to read Apple ID credential from sign-in response."
-        }
     }
 }

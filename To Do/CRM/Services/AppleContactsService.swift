@@ -1,7 +1,10 @@
 import Contacts
 import SwiftData
 
-struct ImportedContact {
+/// Built on a background thread during import and handed back to the main actor, so it
+/// must be neither MainActor-isolated (which -default-isolation=MainActor would otherwise
+/// make it) nor non-Sendable.
+nonisolated struct ImportedContact: Sendable {
     var name: String
     var emails: [String]
     var phones: [String]
@@ -39,6 +42,17 @@ final class AppleContactsService {
     func fetchAll() async throws -> [ImportedContact] {
         try await requestAccess()
 
+        // enumerateContacts is synchronous and decodes every contact plus its thumbnail.
+        // Running it on the main actor froze the UI — the "Importing…" spinner could not
+        // even animate — and a large address book risked a watchdog termination. Hop to a
+        // background task; CNContactStore is safe to use off the main thread.
+        return try await Task.detached(priority: .userInitiated) {
+            try Self.enumerateAllContacts()
+        }.value
+    }
+
+    /// Reads the address book. Must not be called on the main thread.
+    private nonisolated static func enumerateAllContacts() throws -> [ImportedContact] {
         let keys: [CNKeyDescriptor] = [
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
@@ -51,8 +65,11 @@ final class AppleContactsService {
             CNContactThumbnailImageDataKey as CNKeyDescriptor,
         ]
 
+        // A store created on this thread, so nothing is shared across the actor boundary.
+        let store = CNContactStore()
         let request = CNContactFetchRequest(keysToFetch: keys)
         var results: [ImportedContact] = []
+
         try store.enumerateContacts(with: request) { cn, _ in
             let given  = cn.givenName
             let family = cn.familyName

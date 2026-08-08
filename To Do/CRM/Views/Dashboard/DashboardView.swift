@@ -11,13 +11,17 @@ struct DashboardView: View {
     private var upcoming: [Contact] { vm.upcomingReconnects(in: contacts, days: 7) }
     private var recent: [Contact]   { vm.recentlyContacted(in: contacts, limit: 5) }
 
+    // Navigation is owned by CRMRootView; this view only contributes its title, toolbar
+    // and destinations to that stack.
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
 
-                    // Stats row
-                    statsRow
+                    // Stats are meaningless before any contact exists, and rendering
+                    // "0 / 0 / 0" above the empty state made first launch look broken.
+                    if !contacts.isEmpty {
+                        statsRow
+                    }
 
                     // Overdue reconnects
                     if !overdue.isEmpty {
@@ -61,18 +65,19 @@ struct DashboardView: View {
                     }
                 }
                 .padding()
-            }
-            .navigationTitle("Dashboard")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: { showAddContact = true }) {
-                        Image(systemName: "plus")
-                    }
+        }
+        .navigationTitle("Dashboard")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { showAddContact = true }) {
+                    Image(systemName: "plus")
                 }
+                .accessibilityLabel("Add contact")
             }
-            .sheet(isPresented: $showAddContact) {
-                ContactEditView(mode: .add)
-            }
+        }
+        .sheet(isPresented: $showAddContact) {
+            ContactEditView(mode: .add)
         }
     }
 

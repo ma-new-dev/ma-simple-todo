@@ -54,10 +54,6 @@
             argument = "UITEST_IN_MEMORY_STORE"
             isEnabled = "YES">
          </CommandLineArgument>
-         <CommandLineArgument
-            argument = "UITEST_DISABLE_AUTH"
-            isEnabled = "YES">
-         </CommandLineArgument>
       </CommandLineArguments>
    </TestAction>
    <LaunchAction

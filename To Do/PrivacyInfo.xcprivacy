@@ -19,7 +19,13 @@
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>
-			<!-- @AppStorage, used for sign-in state and the stored Apple user identifier. -->
+			<!--
+			  Declared defensively. The app's only direct use was @AppStorage for sign-in
+			  state, which went away with Sign in with Apple. Over-declaring a
+			  required-reason API with a valid reason is permitted; under-declaring is what
+			  triggers ITMS-91053, so this stays until we are certain nothing reaches
+			  UserDefaults.
+			-->
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
