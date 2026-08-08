@@ -2,7 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>Folio: Tasks &amp; Contacts</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Folio imports contacts into your personal CRM. Imported names, phone numbers, email addresses, and photos are stored in your own private iCloud account so they sync across your devices. They are never sent to Folio or to anyone else.</string>
 </dict>
 </plist>

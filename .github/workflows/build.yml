@@ -1,0 +1,106 @@
+name: Build
+
+# Compiles the app and runs unit tests on a macOS runner. Code signing is disabled, so
+# this needs no certificates or secrets — it answers "does it build and do the tests
+# pass", not "can it ship". Archiving for TestFlight is a separate, signed process.
+
+on:
+  # Only the default branch on push. Branch pushes are covered by pull_request, and
+  # running both would double the bill — macOS runners consume minutes at 10x.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          echo "Installed Xcodes:"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "  none found"
+          echo
+          echo "Selected Xcode:"
+          xcodebuild -version
+          echo
+          echo "Available SDKs:"
+          xcodebuild -showsdks
+
+      - name: Select newest Xcode
+        run: |
+          # The project's deployment target is iOS 26.2, so it needs a matching Xcode.
+          # If the runner image is older than that, the build step below will say so.
+          newest="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$newest" ]; then
+            echo "Selecting $newest"
+            sudo xcode-select -s "$newest"
+            xcodebuild -version
+          fi
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "To Do.xcodeproj" \
+            -scheme "To Do" \
+            -configuration Debug \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          # Device names change between runner images, so discover one rather than
+          # hard-coding "iPhone 17" and breaking on the next image bump.
+          udid="$(xcrun simctl list devices available \
+            | grep -E "iPhone" \
+            | head -1 \
+            | grep -Eo "[0-9A-Fa-f-]{36}")"
+          if [ -z "$udid" ]; then
+            echo "No iPhone simulator available on this runner:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "To Do.xcodeproj" \
+            -scheme "To Do" \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:"To DoTests" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: UI tests
+        run: |
+          set -o pipefail
+          # Split from the unit tests so a UI-test failure is distinguishable at a glance,
+          # and so the fast suite has already reported by the time these run.
+          xcodebuild test \
+            -project "To Do.xcodeproj" \
+            -scheme "To Do" \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:"To DoUITests" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""

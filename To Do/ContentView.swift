@@ -20,18 +20,44 @@ struct ContentView: View {
 
     @State private var selectedList: TodoList?
     @State private var pendingListDeletion: TodoList?
+    @State private var showEraseDataConfirmation = false
 
     @State private var isAddingListInline = false
     @State private var newListName = ""
     @FocusState private var isListNameFieldFocused: Bool
-    @State private var editingListID: PersistentIdentifier?
-    @State private var editingListName = ""
-    @FocusState private var isEditingListNameFocused: Bool
+    @State private var renamingList: TodoList?
 
-    let userEmail: String
-    let onSignOut: () -> Void
+    let onEraseAllData: () -> Void
+    var initialTab: Int = 0
+    var initialCRMTab: Int = 0
+    var autoSelectFirstList: Bool = false
+
+    @State private var selectedTabIndex: Int = 0
+
+    init(onEraseAllData: @escaping () -> Void,
+         initialTab: Int = 0, initialCRMTab: Int = 0, autoSelectFirstList: Bool = false) {
+        self.onEraseAllData = onEraseAllData
+        self.initialTab = initialTab
+        self.initialCRMTab = initialCRMTab
+        self.autoSelectFirstList = autoSelectFirstList
+        self._selectedTabIndex = State(initialValue: initialTab)
+    }
 
     var body: some View {
+        TabView(selection: $selectedTabIndex) {
+            todoTab
+                .tabItem { Label("Tasks", systemImage: "checklist") }
+                .tag(0)
+
+            CRMRootView(initialCRMTab: initialCRMTab)
+                .tabItem { Label("People", systemImage: "person.2.fill") }
+                .tag(1)
+        }
+    }
+
+    // MARK: - Tasks Tab
+
+    private var todoTab: some View {
         NavigationSplitView {
             List(selection: $selectedList) {
                 Section {
@@ -41,6 +67,14 @@ struct ContentView: View {
                 ForEach(lists) { list in
                     listRow(for: list)
                     .tag(list)
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            renamingList = list
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        .tint(.blue)
+                    }
                     .swipeActions {
                         Button(role: .destructive) {
                             pendingListDeletion = list
@@ -49,6 +83,12 @@ struct ContentView: View {
                         }
                     }
                     .contextMenu {
+                        Button {
+                            renamingList = list
+                        } label: {
+                            Label("Rename List", systemImage: "pencil")
+                        }
+
                         Button(role: .destructive) {
                             pendingListDeletion = list
                         } label: {
@@ -59,14 +99,36 @@ struct ContentView: View {
                 .onMove(perform: moveLists)
             }
             .navigationTitle("Lists")
+            .task {
+                if autoSelectFirstList, selectedList == nil {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    selectedList = lists.first
+                }
+            }
             .toolbar {
+                // Without this, the .onMove above has no affordance — reordering was
+                // implemented but unreachable.
+                ToolbarItem(placement: .topBarLeading) {
+                    EditButton()
+                        .accessibilityIdentifier("editListsButton")
+                }
                 ToolbarItem(placement: .automatic) {
                     Menu {
-                        Text(userEmail)
-                        Button("Sign Out", role: .destructive, action: onSignOut)
+                        Button(role: .destructive) {
+                            showEraseDataConfirmation = true
+                        } label: {
+                            Label("Erase All Data", systemImage: "trash")
+                        }
                     } label: {
-                        Label("Account", systemImage: "person.circle")
+                        Label("More", systemImage: "ellipsis.circle")
                     }
+                    .accessibilityIdentifier("moreMenuButton")
+                }
+            }
+            .sheet(item: $renamingList) { list in
+                RenameSheet(title: "Rename List", name: list.name) { newName in
+                    list.name = newName
+                    persistChanges()
                 }
             }
             .confirmationDialog(
@@ -91,6 +153,15 @@ struct ContentView: View {
                 }
             } message: {
                 Text("All tasks in this list will also be deleted.")
+            }
+            .alert(
+                "Erase All Data?",
+                isPresented: $showEraseDataConfirmation
+            ) {
+                Button("Erase Everything", role: .destructive, action: onEraseAllData)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("All your lists, tasks, contacts, and interaction history will be permanently deleted from this device and from iCloud. This cannot be undone.")
             }
             .onChange(of: lists) { _, updatedLists in
                 if updatedLists.isEmpty {
@@ -147,69 +218,28 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
+    /// Tapping a row selects the list. Renaming lives in the swipe action and context menu
+    /// instead of an `onTapGesture` on the name, which used to swallow the selection tap.
     private func listRow(for list: TodoList) -> some View {
-        if editingListID == list.persistentModelID {
-            HStack(spacing: 8) {
-                TextField("List name", text: $editingListName)
-                    .focused($isEditingListNameFocused)
-                    .submitLabel(.done)
-                    .onSubmit { commitListRename(for: list) }
-
-                Button("Save") {
-                    commitListRename(for: list)
-                }
-                .disabled(editingListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button("Cancel") {
-                    cancelListRename()
-                }
-            }
-            .onAppear {
-                isEditingListNameFocused = true
-            }
-        } else {
-            HStack {
-                Text(list.name)
-                    .onTapGesture {
-                        beginListRename(for: list)
-                    }
-                Spacer()
-                Text("\((list.tasks ?? []).filter { !$0.isCompleted }.count)")
-                    .foregroundStyle(.secondary)
-            }
+        HStack {
+            Text(list.name)
+            Spacer()
+            Text("\((list.tasks ?? []).filter { !$0.isCompleted }.count)")
+                .foregroundStyle(.secondary)
         }
+        .contentShape(Rectangle())
     }
 
     private func createListInline() {
         let trimmedName = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
 
-        let nextOrder = (lists.map(\.sortOrder).max() ?? -1) + 1
+        let nextOrder = (lists.map(\.sortOrder).min() ?? 1) - 1
         let list = TodoList(name: trimmedName, sortOrder: nextOrder)
         modelContext.insert(list)
         persistChanges()
 
         cancelInlineListCreation()
-    }
-
-    private func beginListRename(for list: TodoList) {
-        editingListID = list.persistentModelID
-        editingListName = list.name
-    }
-
-    private func commitListRename(for list: TodoList) {
-        let trimmed = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        list.name = trimmed
-        persistChanges()
-        cancelListRename()
-    }
-
-    private func cancelListRename() {
-        editingListID = nil
-        editingListName = ""
-        isEditingListNameFocused = false
     }
 
     private func cancelInlineListCreation() {
@@ -222,12 +252,11 @@ struct ContentView: View {
         if selectedList?.persistentModelID == list.persistentModelID {
             selectedList = nil
         }
-        if editingListID == list.persistentModelID {
-            cancelListRename()
-        }
         modelContext.delete(list)
 
-        for (index, currentList) in lists.enumerated() {
+        // Reindex from the surviving lists. Iterating the @Query array here would still
+        // include the list just deleted, since it has not refreshed yet.
+        for (index, currentList) in lists.filter({ $0.persistentModelID != list.persistentModelID }).enumerated() {
             currentList.sortOrder = index
         }
         persistChanges()
@@ -252,6 +281,64 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Rename Sheet
+
+/// Renaming in a sheet rather than inline. The inline editor put Save and Cancel buttons
+/// into the row itself, which clipped badly at large Dynamic Type sizes.
+struct RenameSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    @State private var name: String
+    let onSave: (String) -> Void
+
+    @FocusState private var isFocused: Bool
+
+    init(title: String, name: String, onSave: @escaping (String) -> Void) {
+        self.title = title
+        self._name = State(initialValue: name)
+        self.onSave = onSave
+    }
+
+    private var trimmed: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                    .focused($isFocused)
+                    .submitLabel(.done)
+                    .onSubmit(save)
+                    .accessibilityIdentifier("renameField")
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: save)
+                        .fontWeight(.semibold)
+                        .disabled(trimmed.isEmpty)
+                }
+            }
+            .onAppear { isFocused = true }
+        }
+        .presentationDetents([.height(180)])
+    }
+
+    private func save() {
+        guard !trimmed.isEmpty else { return }
+        onSave(trimmed)
+        dismiss()
+    }
+}
+
+// MARK: - Task List Detail
+
 private struct TaskListDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -261,12 +348,13 @@ private struct TaskListDetailView: View {
     @State private var newTaskTitle = ""
     @FocusState private var isTaskTitleFieldFocused: Bool
 
-    @State private var pendingCompletionTask: TaskItem?
     @State private var pendingTaskDeletion: TaskItem?
     @State private var isCompletedExpanded = false
-    @State private var editingTaskID: PersistentIdentifier?
-    @State private var editingTaskTitle = ""
-    @FocusState private var isEditingTaskTitleFocused: Bool
+    @State private var renamingTask: TaskItem?
+
+    /// The task completed most recently, so it can be undone. Cleared once the user does
+    /// anything else, so Undo never applies to something older than the last action.
+    @State private var lastCompletedTask: TaskItem?
 
     private var allTasks: [TaskItem] {
         (list.tasks ?? [])
@@ -282,8 +370,12 @@ private struct TaskListDetailView: View {
         allTasks.filter { !$0.isCompleted }
     }
 
+    /// Most recently completed first — `completedAt` was already recorded but never used
+    /// for ordering, so the newest completion could land anywhere in the list.
     private var completedTasks: [TaskItem] {
-        allTasks.filter { $0.isCompleted }
+        allTasks
+            .filter { $0.isCompleted }
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
     }
 
     var body: some View {
@@ -311,35 +403,25 @@ private struct TaskListDetailView: View {
                         ForEach(completedTasks) { task in
                             completedTaskRow(task)
                         }
-                        .onMove(perform: moveCompletedTasks)
                     }
                 }
             }
         }
         .navigationTitle(list.name)
-        .alert(
-            "Mark task complete?",
-            isPresented: Binding(
-                get: { pendingCompletionTask != nil },
-                set: { shouldShow in
-                    if !shouldShow {
-                        pendingCompletionTask = nil
-                    }
-                }
-            ),
-            presenting: pendingCompletionTask
-        ) { task in
-            Button("Confirm") {
-                markTaskCompleted(task)
-                pendingCompletionTask = nil
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                EditButton()
+                    .accessibilityIdentifier("editTasksButton")
             }
-            .accessibilityIdentifier("confirmCompleteTaskButton")
-
-            Button("Cancel", role: .cancel) {
-                pendingCompletionTask = nil
+        }
+        .safeAreaInset(edge: .bottom) {
+            undoBar
+        }
+        .sheet(item: $renamingTask) { task in
+            RenameSheet(title: "Rename Task", name: task.title) { newTitle in
+                task.title = newTitle
+                persistChanges()
             }
-        } message: { task in
-            Text("\"\(task.title)\" will be moved to Completed.")
         }
         .confirmationDialog(
             "Delete this task?",
@@ -362,6 +444,34 @@ private struct TaskListDetailView: View {
             Button("Cancel", role: .cancel) {
                 pendingTaskDeletion = nil
             }
+        }
+    }
+
+    /// Replaces the confirmation alert that used to gate every completion. Completing is
+    /// one tap and reversible from here.
+    @ViewBuilder
+    private var undoBar: some View {
+        if let task = lastCompletedTask, task.isCompleted {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Completed \"\(task.title)\"")
+                    .font(.subheadline)
+                    .lineLimit(1)
+                Spacer()
+                Button("Undo") {
+                    withAnimation {
+                        moveTaskBackToActive(task)
+                        lastCompletedTask = nil
+                    }
+                }
+                .fontWeight(.semibold)
+                .accessibilityIdentifier("undoCompleteButton")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.thinMaterial)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -397,44 +507,24 @@ private struct TaskListDetailView: View {
 
     private func taskRow(_ task: TaskItem) -> some View {
         HStack {
-            if editingTaskID == task.persistentModelID {
-                TextField("Task title", text: $editingTaskTitle)
-                    .focused($isEditingTaskTitleFocused)
-                    .submitLabel(.done)
-                    .onSubmit { commitTaskRename(for: task) }
-                    .onAppear {
-                        isEditingTaskTitleFocused = true
-                    }
-            } else {
-                Text(task.title)
-                    .onTapGesture {
-                        beginTaskRename(for: task)
-                    }
-            }
-            Spacer()
-            if editingTaskID == task.persistentModelID {
-                Button("Save") {
-                    commitTaskRename(for: task)
-                }
-                .disabled(editingTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button("Cancel") {
-                    cancelTaskRename()
-                }
-            } else {
             Button {
-                pendingCompletionTask = task
+                complete(task)
             } label: {
                 Image(systemName: "circle")
+                    .imageScale(.large)
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Mark complete")
             .accessibilityIdentifier("markCompleteButton")
-            }
+
+            Text(task.title)
+            Spacer()
         }
+        .contentShape(Rectangle())
         .swipeActions(edge: .leading) {
             Button {
-                pendingCompletionTask = task
+                complete(task)
             } label: {
                 Label("Complete", systemImage: "checkmark.circle")
             }
@@ -446,12 +536,25 @@ private struct TaskListDetailView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+
+            Button {
+                renamingTask = task
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.blue)
         }
         .contextMenu {
             Button {
-                pendingCompletionTask = task
+                complete(task)
             } label: {
                 Label("Mark Complete", systemImage: "checkmark.circle")
+            }
+
+            Button {
+                renamingTask = task
+            } label: {
+                Label("Rename Task", systemImage: "pencil")
             }
 
             Button(role: .destructive) {
@@ -464,46 +567,26 @@ private struct TaskListDetailView: View {
 
     private func completedTaskRow(_ task: TaskItem) -> some View {
         HStack {
-            if editingTaskID == task.persistentModelID {
-                TextField("Task title", text: $editingTaskTitle)
-                    .focused($isEditingTaskTitleFocused)
-                    .submitLabel(.done)
-                    .onSubmit { commitTaskRename(for: task) }
-                    .onAppear {
-                        isEditingTaskTitleFocused = true
-                    }
-            } else {
-                Text(task.title)
-                    .strikethrough()
-                    .foregroundStyle(.secondary)
-                    .onTapGesture {
-                        beginTaskRename(for: task)
-                    }
-            }
-            Spacer()
-            if editingTaskID == task.persistentModelID {
-                Button("Save") {
-                    commitTaskRename(for: task)
-                }
-                .disabled(editingTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button("Cancel") {
-                    cancelTaskRename()
-                }
-            } else {
             Button {
-                moveTaskBackToActive(task)
+                withAnimation { moveTaskBackToActive(task) }
             } label: {
-                Label("Move Back", systemImage: "arrow.uturn.backward.circle")
+                Image(systemName: "checkmark.circle.fill")
+                    .imageScale(.large)
+                    .foregroundStyle(.green)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Move back to active")
             .accessibilityIdentifier("moveBackButton")
-            }
+
+            Text(task.title)
+                .strikethrough()
+                .foregroundStyle(.secondary)
+            Spacer()
         }
+        .contentShape(Rectangle())
         .swipeActions(edge: .leading) {
             Button {
-                moveTaskBackToActive(task)
+                withAnimation { moveTaskBackToActive(task) }
             } label: {
                 Label("Move Back", systemImage: "arrow.uturn.backward.circle")
             }
@@ -515,12 +598,25 @@ private struct TaskListDetailView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+
+            Button {
+                renamingTask = task
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.blue)
         }
         .contextMenu {
             Button {
-                moveTaskBackToActive(task)
+                withAnimation { moveTaskBackToActive(task) }
             } label: {
                 Label("Move Back", systemImage: "arrow.uturn.backward.circle")
+            }
+
+            Button {
+                renamingTask = task
+            } label: {
+                Label("Rename Task", systemImage: "pencil")
             }
 
             Button(role: .destructive) {
@@ -535,31 +631,12 @@ private struct TaskListDetailView: View {
         let trimmedTitle = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
 
-        let nextOrder = ((list.tasks ?? []).map(\.sortOrder).max() ?? -1) + 1
+        let nextOrder = ((list.tasks ?? []).map(\.sortOrder).min() ?? 1) - 1
         let task = TaskItem(title: trimmedTitle, list: list, sortOrder: nextOrder)
         modelContext.insert(task)
         persistChanges()
 
         cancelInlineTaskCreation()
-    }
-
-    private func beginTaskRename(for task: TaskItem) {
-        editingTaskID = task.persistentModelID
-        editingTaskTitle = task.title
-    }
-
-    private func commitTaskRename(for task: TaskItem) {
-        let trimmed = editingTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        task.title = trimmed
-        persistChanges()
-        cancelTaskRename()
-    }
-
-    private func cancelTaskRename() {
-        editingTaskID = nil
-        editingTaskTitle = ""
-        isEditingTaskTitleFocused = false
     }
 
     private func cancelInlineTaskCreation() {
@@ -568,22 +645,32 @@ private struct TaskListDetailView: View {
         isTaskTitleFieldFocused = false
     }
 
-    private func markTaskCompleted(_ task: TaskItem) {
-        task.completedAt = .now
-        persistChanges()
+    private func complete(_ task: TaskItem) {
+        withAnimation {
+            task.completedAt = .now
+            lastCompletedTask = task
+            persistChanges()
+        }
     }
 
     private func moveTaskBackToActive(_ task: TaskItem) {
         task.completedAt = nil
+        if lastCompletedTask?.persistentModelID == task.persistentModelID {
+            lastCompletedTask = nil
+        }
         persistChanges()
     }
 
     private func deleteTask(_ task: TaskItem) {
-        if editingTaskID == task.persistentModelID {
-            cancelTaskRename()
+        if lastCompletedTask?.persistentModelID == task.persistentModelID {
+            lastCompletedTask = nil
         }
         modelContext.delete(task)
-        reindexTasks()
+
+        // Reindex from the surviving tasks; `allTasks` still contains the deleted one.
+        for (index, remaining) in allTasks.filter({ $0.persistentModelID != task.persistentModelID }).enumerated() {
+            remaining.sortOrder = index
+        }
         persistChanges()
     }
 
@@ -604,29 +691,6 @@ private struct TaskListDetailView: View {
         persistChanges()
     }
 
-    private func moveCompletedTasks(from source: IndexSet, to destination: Int) {
-        var reorderedCompleted = completedTasks
-        reorderedCompleted.move(fromOffsets: source, toOffset: destination)
-
-        var nextOrder = 0
-        for task in activeTasks {
-            task.sortOrder = nextOrder
-            nextOrder += 1
-        }
-
-        for task in reorderedCompleted {
-            task.sortOrder = nextOrder
-            nextOrder += 1
-        }
-        persistChanges()
-    }
-
-    private func reindexTasks() {
-        for (index, task) in allTasks.enumerated() {
-            task.sortOrder = index
-        }
-    }
-
     private func persistChanges() {
         do {
             try modelContext.save()
@@ -637,6 +701,6 @@ private struct TaskListDetailView: View {
 }
 
 #Preview {
-    ContentView(userEmail: "preview@example.com", onSignOut: {})
+    ContentView(onEraseAllData: {})
         .modelContainer(for: [TodoList.self, TaskItem.self], inMemory: true)
 }

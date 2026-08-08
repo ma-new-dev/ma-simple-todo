@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Folio does not track users across apps or websites. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!--
+	  No data is collected by the developer. Tasks and contacts are stored on device and
+	  synced through the user's own private iCloud database, which the developer cannot
+	  access. There is no analytics SDK and no application server.
+	-->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  Declared defensively. The app's only direct use was @AppStorage for sign-in
+			  state, which went away with Sign in with Apple. Over-declaring a
+			  required-reason API with a valid reason is permitted; under-declaring is what
+			  triggers ITMS-91053, so this stays until we are certain nothing reaches
+			  UserDefaults.
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
