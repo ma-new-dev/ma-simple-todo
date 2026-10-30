@@ -236,8 +236,8 @@ through the paths this release changed.
 ## 5. After upload
 
 - Processing takes 5–30 minutes before the build appears in TestFlight.
-- **Export compliance**: the app makes no network calls of its own and uses only Apple's
-  standard encryption, so the answer is *no*. Adding `ITSAppUsesNonExemptEncryption` =
+- **Export compliance**: the app's only network calls are HTTPS to WHOOP, Anthropic and
+  OpenAI through Apple's URLSession, which is exempt standard encryption, so the answer is *no*. Adding `ITSAppUsesNonExemptEncryption` =
   `<false/>` to `Info.plist` removes the prompt on every future upload.
 - Internal testers get the build immediately. External testers require Beta App Review.
 
