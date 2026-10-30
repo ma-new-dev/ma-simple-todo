@@ -101,6 +101,8 @@ struct To_DoApp: App {
             try context.delete(model: DailyMetric.self)
             try context.delete(model: Workout.self)
             try context.delete(model: HealthBrief.self)
+            try context.delete(model: MealOption.self)
+            try context.delete(model: DishImage.self)
             try context.save()
         } catch {
             eraseDataErrorMessage = """
@@ -170,6 +172,8 @@ fileprivate enum StorageBootstrap {
             DailyMetric.self,
             Workout.self,
             HealthBrief.self,
+            MealOption.self,
+            DishImage.self,
         ])
         let cloudKitConfiguration = ModelConfiguration(
             schema: schema,

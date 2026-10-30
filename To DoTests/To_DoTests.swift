@@ -96,4 +96,65 @@ struct To_DoTests {
         vm.scope = .neverContacted
         #expect(vm.filtered([overdue, fine]).count == 2)
     }
+
+    // MARK: - Food
+
+    private func chosenMeal(_ name: String, day: Int, sources: [String], veg: [String] = [], gluten: Bool = false, protein: Double = 25) -> MealOption {
+        let date = Calendar.current.date(byAdding: .day, value: day, to: Calendar.current.startOfDay(for: .now)) ?? .now
+        let option = MealOption(date: date, slot: .lunch, sortOrder: 0, name: name, detail: "")
+        option.proteinSources = sources
+        option.vegetables = veg
+        option.isGlutenMeal = gluten
+        option.proteinGrams = protein
+        option.decision = .chosen
+        return option
+    }
+
+    @Test
+    func weekBalanceCountsPaneerDaysNotMeals() {
+        let meals = [
+            chosenMeal("Palak paneer", day: 0, sources: ["paneer"]),
+            chosenMeal("Paneer bhurji", day: 0, sources: ["paneer"]),
+            chosenMeal("Matar paneer", day: -1, sources: ["Paneer"]),
+            chosenMeal("Tofu stir-fry", day: -1, sources: ["tofu"], veg: ["Bhindi", "carrot"]),
+            chosenMeal("Khapli roti and dal", day: -2, sources: ["moong"], veg: ["carrot"], gluten: true),
+        ]
+        let balance = WeekBalance(chosen: meals)
+        #expect(balance.paneerDays == 2)
+        #expect(balance.tofuMeals == 1)
+        #expect(balance.glutenMeals == 1)
+        #expect(balance.vegetables == ["bhindi", "carrot"])
+        #expect(balance.mealsChosen == 5)
+    }
+
+    @Test
+    func weekBalanceNudgesWhenPaneerCapReached() {
+        let meals = (0..<3).map { chosenMeal("Paneer \($0)", day: -$0, sources: ["paneer"]) }
+        let balance = WeekBalance(chosen: meals)
+        #expect(balance.nudges.first?.contains("Paneer cap reached") == true)
+    }
+
+    @Test
+    func weekBalanceIgnoresUnchosenOptions() {
+        let liked = chosenMeal("Paneer tikka", day: 0, sources: ["paneer"])
+        liked.decision = .liked
+        #expect(WeekBalance(chosen: [liked]).paneerDays == 0)
+    }
+
+    @Test
+    func dishKeyNormalisesPunctuationAndCase() {
+        #expect(DishImage.key(for: "Moong Dal Chilla (with lauki)") == "moong-dal-chilla-with-lauki")
+        #expect(DishImage.key(for: "moong dal  chilla, with LAUKI") == "moong-dal-chilla-with-lauki")
+    }
+
+    @Test @MainActor
+    func tasteHistoryCollapsesRepeats() {
+        #expect(FoodPlanService.counted(["Idli", "Upma", "Idli"]) == "Idli ×2; Upma")
+    }
+
+    @Test @MainActor
+    func foodPlanIsBundled() {
+        #expect(FoodPlanService.foodPlan.contains("Keep out"))
+        #expect(FoodPlanService.foodPlan.contains("## Week 4"))
+    }
 }

@@ -142,6 +142,23 @@ enum SampleData {
         brief.today = ["No second session today; treat padel tomorrow as social if recovery is still under 50.", "Lights out by 22:30."]
         context.insert(brief)
 
+        // MARK: - Food (screenshot mode only)
+
+        let meals: [(MealSlot, String, String, Double, [String], [String], [String], Bool)] = [
+            (.breakfast, "Moong dal chilla with lauki", "1 large thick chilla stuffed with grated lauki and carrot, 30 g paneer, tomato-ginger chutney", 24, ["lauki", "carrot"], ["moong", "paneer"], [], false),
+            (.breakfast, "Oats porridge with whey", "40 g oats cooked soft, 1 scoop whey off the heat, ½ firm banana, 1 tsp flax", 29, [], ["whey"], ["oats"], false),
+            (.breakfast, "Vegetable omelette on sourdough", "2 eggs + 2 whites with beans and carrot, 1 slice true sourdough, 1 kiwi", 25, ["beans", "carrot"], ["egg"], ["sourdough"], false),
+            (.breakfast, "Moong dal idli and sambhar", "3 moong dal idli, ¾ cup carrot-beans sambhar, 1 boiled egg", 24, ["carrot", "beans"], ["moong", "toor", "egg"], ["rice"], false),
+            (.lunch, "Bengali bhapa paneer", "100 g paneer steamed in mustard-coconut paste, panch phoran bhindi, ½ cup quinoa", 31, ["bhindi"], ["paneer", "moong"], ["quinoa"], false),
+            (.lunch, "Lemon-pepper tofu bowl", "130 g firm tofu, ½ cup quinoa, roasted carrot and beans, ½ cup moong dal", 29, ["carrot", "beans"], ["tofu", "moong"], ["quinoa"], false),
+            (.dinner, "Dal palak with reheated rice", "1½ cups toor-moong dal with palak, seasonal sabzi, ½ cup cooled-and-reheated rice", 23, ["palak"], ["toor", "moong"], ["rice"], false),
+        ]
+        for (index, meal) in meals.enumerated() {
+            let option = MealOption(date: Date(), slot: meal.0, sortOrder: index, name: meal.1, detail: meal.2)
+            (option.proteinGrams, option.vegetables, option.proteinSources, option.grains, option.isGlutenMeal) = (meal.3, meal.4, meal.5, meal.6, meal.7)
+            context.insert(option)
+        }
+
         try? context.save()
     }
 }
