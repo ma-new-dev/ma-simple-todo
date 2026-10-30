@@ -8,5 +8,7 @@
 	<string>AppIcon</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Compass imports contacts into your personal CRM. Imported names, phone numbers, email addresses, and photos are stored in your own private iCloud account so they sync across your devices. They are never sent to Compass or to anyone else.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Compass reads your steps, active energy and Apple Watch exercise minutes to show yesterday's activity next to your WHOOP recovery. It never writes to Apple Health.</string>
 </dict>
 </plist>

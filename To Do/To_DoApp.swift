@@ -98,6 +98,9 @@ struct To_DoApp: App {
             try context.delete(model: TodoList.self)
             try context.delete(model: Interaction.self)
             try context.delete(model: Contact.self)
+            try context.delete(model: DailyMetric.self)
+            try context.delete(model: Workout.self)
+            try context.delete(model: HealthBrief.self)
             try context.save()
         } catch {
             eraseDataErrorMessage = """
@@ -161,6 +164,12 @@ fileprivate enum StorageBootstrap {
             TaskItem.self,
             Contact.self,
             Interaction.self,
+            // 3.0 — additive only. Existing record types are untouched, so a 2.x store
+            // migrates without changes. Each new type must be deployed to the CloudKit
+            // Production schema before release (see RELEASING.md).
+            DailyMetric.self,
+            Workout.self,
+            HealthBrief.self,
         ])
         let cloudKitConfiguration = ModelConfiguration(
             schema: schema,

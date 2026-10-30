@@ -115,6 +115,33 @@ enum SampleData {
             }
         }
 
+        // MARK: - Health (screenshot mode only)
+
+        let calendar = Calendar.current
+        // recovery, hrv, rhr, sleep h, sleep perf, strain, steps, exercise min — newest last
+        let week: [(Double, Double, Double, Double, Double, Double, Double, Double)] = [
+            (71, 55, 51, 7.4, 86, 9.8, 12_400, 48),
+            (64, 52, 53, 7.0, 81, 6.1, 9_800, 22),
+            (58, 50, 53, 7.1, 82, 11.6, 14_100, 61),
+            (70, 56, 51, 7.6, 88, 13.5, 13_200, 55),
+            (68, 54, 52, 7.2, 84, 12.0, 15_300, 64),
+            (70, 56, 51, 7.3, 85, 14.4, 16_800, 72),
+            (42, 43, 54, 7.0, 82, 4.2, 6_100, 18),
+        ]
+        for (offset, values) in week.enumerated() {
+            let date = calendar.date(byAdding: .day, value: offset - (week.count - 1), to: Date()) ?? Date()
+            let m = DailyMetric(date: date)
+            (m.recovery, m.hrv, m.restingHR, m.sleepHours, m.sleepPerformance, m.dayStrain, m.steps, m.exerciseMinutes) = values
+            m.recoverySource = "whoop"
+            context.insert(m)
+        }
+        let brief = HealthBrief(date: Date())
+        brief.headline = "Recovery fell to 42 from 70 after yesterday's 14.4 strain on 7.0 h of sleep: keep today light."
+        brief.goingWell = ["Thursday's run stayed in zone 3 for 36 of 40 minutes: properly easy."]
+        brief.watch = ["Sleep has fallen short of need for seven nights; the gap is now 1.9 h."]
+        brief.today = ["No second session today; treat padel tomorrow as social if recovery is still under 50.", "Lights out by 22:30."]
+        context.insert(brief)
+
         try? context.save()
     }
 }
