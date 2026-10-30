@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Folio: Tasks &amp; Contacts</string>
+	<string>Compass</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Folio imports contacts into your personal CRM. Imported names, phone numbers, email addresses, and photos are stored in your own private iCloud account so they sync across your devices. They are never sent to Folio or to anyone else.</string>
+	<string>Compass imports contacts into your personal CRM. Imported names, phone numbers, email addresses, and photos are stored in your own private iCloud account so they sync across your devices. They are never sent to Compass or to anyone else.</string>
 </dict>
 </plist>

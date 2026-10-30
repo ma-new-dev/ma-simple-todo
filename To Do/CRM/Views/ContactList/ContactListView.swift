@@ -13,6 +13,14 @@ struct ContactListView: View {
     @State private var contactToDeleteName = ""
     @State private var contactToEdit: Contact?
     @State private var showImport = false
+    @State private var showCatchUp = false
+    @State private var openedContact: Contact?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// The table needs the width; iPhone keeps the list.
+    private var usesTable: Bool { horizontalSizeClass == .regular }
+
+    private var catchUpCount: Int { ContactActions.catchUpQueue(from: contacts).count }
 
     enum ViewMode: String, CaseIterable {
         case list  = "List"
@@ -30,13 +38,28 @@ struct ContactListView: View {
                 activeFiltersBar
             }
 
+            scopeBar
+
             Group {
                 switch viewMode {
-                case .list: listContent
+                case .list:
+                    if usesTable {
+                        ContactTableView(
+                            contacts: filtered,
+                            allTags: vm.allTags(in: contacts),
+                            openedContact: $openedContact
+                        )
+                    } else {
+                        listContent
+                    }
                 case .city: byCityContent
                 }
             }
         }
+        .navigationDestination(item: $openedContact) { contact in
+            ContactDetailView(contact: contact)
+        }
+        .sheet(isPresented: $showCatchUp) { CatchUpView() }
         .searchable(text: $vm.searchText, prompt: "Search contacts…")
         .navigationTitle("Contacts")
         .navigationBarTitleDisplayMode(.large)
@@ -74,6 +97,9 @@ struct ContactListView: View {
                 ForEach(filtered) { contact in
                     NavigationLink(destination: ContactDetailView(contact: contact)) {
                         ContactRowView(contact: contact)
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        quickSwipeActions(for: contact)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) { beginDelete(contact) } label: {
@@ -114,6 +140,9 @@ struct ContactListView: View {
                         NavigationLink(destination: ContactDetailView(contact: contact)) {
                             ContactRowView(contact: contact, showCity: false)
                         }
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            quickSwipeActions(for: contact)
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) { beginDelete(contact) } label: {
                                 Label("Delete", systemImage: "trash")
@@ -137,6 +166,51 @@ struct ContactListView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Quick actions
+
+    /// Leading swipe on iPhone: full swipe marks contacted, the second button pushes the
+    /// reconnect out two weeks. The same actions the table and catch-up mode use.
+    @ViewBuilder
+    private func quickSwipeActions(for contact: Contact) -> some View {
+        Button {
+            ContactActions.markContacted([contact], in: modelContext)
+        } label: {
+            Label("Contacted", systemImage: "checkmark.message")
+        }
+        .tint(.green)
+        Button {
+            ContactActions.snooze([contact], .twoWeeks, in: modelContext)
+        } label: {
+            Label("2 weeks", systemImage: "calendar.badge.clock")
+        }
+        .tint(.orange)
+    }
+
+    // MARK: - Scope Bar
+
+    private var scopeBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ContactsViewModel.Scope.allCases) { scope in
+                    Button {
+                        vm.scope = scope
+                    } label: {
+                        Text(scope.rawValue)
+                            .font(.subheadline)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(vm.scope == scope ? Color.accentColor : Color(.secondarySystemFill))
+                            .foregroundStyle(vm.scope == scope ? Color.white : Color.primary)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
     }
 
@@ -169,6 +243,14 @@ struct ContactListView: View {
             Button(action: { showAddContact = true }) {
                 Image(systemName: "plus")
             }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button { showCatchUp = true } label: {
+                Label(catchUpCount > 0 ? "Catch Up (\(catchUpCount))" : "Catch Up",
+                      systemImage: "person.crop.circle.badge.clock")
+                    .labelStyle(.titleAndIcon)
+            }
+            .accessibilityIdentifier("catchUpButton")
         }
         ToolbarItem(placement: .topBarLeading) {
             Menu {

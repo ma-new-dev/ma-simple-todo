@@ -127,7 +127,10 @@ struct To_DoApp: App {
 
     private var screenshotInitialTab: Int {
         switch screenshotScreen {
-        case "crm_dashboard", "crm_contacts": return 1
+        case "health": return 1
+        case "food": return 2
+        case "crm_dashboard", "crm_contacts": return 3
+        case "networth": return 4
         default: return 0
         }
     }
@@ -204,7 +207,7 @@ private struct StorageFailureView: View {
             Label("Can't Open Your Data", systemImage: "externaldrive.badge.xmark")
         } description: {
             VStack(spacing: 12) {
-                Text("Folio couldn't open its local database, so it can't start.")
+                Text("Compass couldn't open its local database, so it can't start.")
                 Text("Restarting your device often clears this. If it keeps happening, reinstalling the app will fix it — your data will be restored from iCloud if sync was on.")
                 Text(message)
                     .font(.caption)

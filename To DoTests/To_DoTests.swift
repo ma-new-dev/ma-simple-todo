@@ -66,4 +66,34 @@ struct To_DoTests {
         contact.interactions = nil
         #expect(contact.interactionsList.isEmpty)
     }
+
+    @Test
+    func catchUpQueueOrdersOverdueThenDueTodayThenNeglectedHighPriority() {
+        let now = Date()
+        let day: TimeInterval = 86_400
+
+        let overdueOld = Contact(name: "Overdue old", nextReconnect: now.addingTimeInterval(-10 * day))
+        let overdueNew = Contact(name: "Overdue new", nextReconnect: now.addingTimeInterval(-1 * day))
+        let future = Contact(name: "Future", nextReconnect: now.addingTimeInterval(20 * day))
+        let neglected = Contact(name: "Neglected", priority: .high, lastContacted: now.addingTimeInterval(-90 * day))
+        let recentHigh = Contact(name: "Recent high", priority: .high, lastContacted: now.addingTimeInterval(-5 * day))
+        let neglectedLow = Contact(name: "Neglected low", priority: .low, lastContacted: now.addingTimeInterval(-90 * day))
+
+        let queue = ContactActions.catchUpQueue(
+            from: [future, neglected, overdueNew, recentHigh, overdueOld, neglectedLow],
+            now: now
+        )
+        #expect(queue.map(\.name) == ["Overdue old", "Overdue new", "Neglected"])
+    }
+
+    @Test @MainActor
+    func contactsViewModelScopeFiltersOverdue() {
+        let vm = ContactsViewModel()
+        let overdue = Contact(name: "A", nextReconnect: Date().addingTimeInterval(-3600))
+        let fine = Contact(name: "B")
+        vm.scope = .overdue
+        #expect(vm.filtered([overdue, fine]).map(\.name) == ["A"])
+        vm.scope = .neverContacted
+        #expect(vm.filtered([overdue, fine]).count == 2)
+    }
 }
