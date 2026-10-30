@@ -157,4 +157,24 @@ struct To_DoTests {
         #expect(FoodPlanService.foodPlan.contains("Keep out"))
         #expect(FoodPlanService.foodPlan.contains("## Week 4"))
     }
+
+    // MARK: - Net worth
+
+    @Test
+    func netWorthSummaryDecodesWithOptionalFieldsOmitted() throws {
+        let json = """
+        {"asOf":"2026-09-30","refreshedAt":"2026-10-18",
+         "totals":{"netInvestedCr":100,"fmvCr":120,"gainCr":20,"lifetimeGainPct":20,"blendedIrrPct":11},
+         "allocation":[{"name":"Equity","pct":100}],
+         "segments":[{"name":"Equity","netInvestedCr":100,"fmvCr":120}],
+         "managers":[{"name":"A","type":"PMS","fmvCr":120,"gainCr":20}],
+         "decisions":[{"title":"#1","status":"open"}],
+         "history":[{"date":"2026-10-18","fmvCr":120}]}
+        """
+        let summary = try JSONDecoder().decode(NetWorthSummary.self, from: Data(json.utf8))
+        #expect(summary.totals.fmvCr == 120)
+        #expect(summary.totals.vsNifty500Cr == nil)
+        #expect(summary.managers.first?.irrPct == nil)
+        #expect(NetWorthSummary.date(summary.asOf) != nil)
+    }
 }

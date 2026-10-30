@@ -159,6 +159,25 @@ enum SampleData {
             context.insert(option)
         }
 
+        // MARK: - Net worth (screenshot mode only; made-up numbers)
+
+        NetWorthStore.shared.summary = NetWorthSummary(
+            asOf: "2026-09-30",
+            refreshedAt: "2026-10-18",
+            totals: .init(netInvestedCr: 100, fmvCr: 120, gainCr: 20, lifetimeGainPct: 20, blendedIrrPct: 11, blendedIrrInclCashPct: 9, vsNifty500Cr: 2.5),
+            allocation: [.init(name: "Equity / AIF", pct: 50), .init(name: "Parked cash", pct: 35), .init(name: "Debt", pct: 10), .init(name: "Multi-asset", pct: 5)],
+            segments: [
+                .init(name: "Equity", netInvestedCr: 50, fmvCr: 60, irrPct: 10.5, note: "8 PMS/AIF + 2 MF"),
+                .init(name: "Debt", netInvestedCr: 12, fmvCr: 13, irrPct: 8.8, note: nil),
+            ],
+            managers: [
+                .init(name: "Manager A", type: "PMS", fmvCr: 15, gainCr: 4, irrPct: 16, vsNifty500Cr: 1.2, asOf: nil),
+                .init(name: "Manager B", type: "Cat-III AIF", fmvCr: 9, gainCr: -0.2, irrPct: -2.1, vsNifty500Cr: -0.4, asOf: nil),
+            ],
+            decisions: [.init(title: "#10 Manager fee change", status: "due <=30d", nextDate: "22-Oct-2026")],
+            history: [.init(date: "2026-09-18", fmvCr: 116, netInvestedCr: 98), .init(date: "2026-10-05", fmvCr: 118, netInvestedCr: 99), .init(date: "2026-10-18", fmvCr: 120, netInvestedCr: 100)]
+        )
+
         try? context.save()
     }
 }
