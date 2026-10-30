@@ -5,7 +5,12 @@ Distribution certificate, and access to the developer portal. CI compiles the ap
 the tests, but it never signs, archives, or uploads — those need credentials that should
 not live in a repository.
 
-Current state: **version 2.3, build 17**, on branch `claude/explore-app-changes-nyjj9`.
+Current state: **version 3.0, build 18 ("Compass")**, on branch `compass-3.0`.
+
+3.0 renames Folio to **Compass** (display name only: bundle ID `com.matodoapp.todo`, the
+CloudKit container and the on-device store are unchanged, so it installs as an update) and
+adds three tabs: Health, Food and Net Worth. It also adds the CRM table and catch-up mode.
+Everything it adds to the data model is additive; nothing existing is renamed or retyped.
 
 ---
 
@@ -13,12 +18,11 @@ Current state: **version 2.3, build 17**, on branch `claude/explore-app-changes-
 
 ```sh
 git fetch origin
-git checkout claude/explore-app-changes-nyjj9
+git checkout compass-3.0
 git pull
 ```
 
-Check the CI badge on [PR #1](https://github.com/ma-new-dev/ma-simple-todo/pull/1), or run
-locally:
+Check the CI badge on the 3.0 pull request, or run locally:
 
 ```sh
 xcodebuild build \
@@ -42,6 +46,19 @@ Do not archive from a branch whose build is red.
   CloudKit container `iCloud.com.matodoapp.todo` assigned to it.
 - In Xcode: select the **To Do** target → **Signing & Capabilities** → your Team selected,
   **Automatically manage signing** checked.
+
+### New in 3.0: two capabilities
+
+The entitlements file now also requests:
+
+- **HealthKit** (read-only: steps, active energy, exercise minutes), and
+- **iCloud Documents** on the same container `iCloud.com.matodoapp.todo`, for the Net
+  Worth file and the upgrade backups.
+
+With automatic signing, Xcode adds both to the App ID the first time you archive. If the
+upload fails with a provisioning error, open the App ID in the developer portal, tick
+**HealthKit**, and under **iCloud** make sure both CloudKit and iCloud Documents are on with
+the container assigned; then refresh the profile in Xcode.
 
 ### About Sign in with Apple
 
@@ -69,17 +86,28 @@ if the change only exists in Development, **Production silently rejects every sa
 app keeps working locally and sync just stops, with no error surfaced anywhere. See commit
 `6f8a24b`.
 
-### For 2.3 specifically
+### For 3.0 specifically: five new record types must reach Production
 
-**2.3 adds no new properties, so no deploy should be needed.** This step is a verification,
-not an action.
+3.0 adds `CD_DailyMetric`, `CD_Workout`, `CD_HealthBrief`, `CD_MealOption` and
+`CD_DishImage` (the last has an asset field for the photo). Until they exist in
+**Production**, those records will not sync from TestFlight builds. Tasks and contacts are
+unaffected either way.
 
-1. Open [CloudKit Console](https://icloud.developer.apple.com/dashboard/).
-2. Select the container **`iCloud.com.matodoapp.todo`**.
-3. Go to **Schema → Record Types**, and use the environment switcher to compare
-   **Development** and **Production**.
-4. Confirm all four record types exist in **Production**:
-   `CD_TodoList`, `CD_TaskItem`, `CD_Contact`, `CD_Interaction`.
+The catch is the warning below: Development still carries leftover v2.1 fields, and
+deploying would push them to Production permanently. So clean Development first:
+
+1. In [CloudKit Console](https://icloud.developer.apple.com/dashboard/), select
+   **`iCloud.com.matodoapp.todo`** → **Development** → **Reset Development Environment**.
+   This resets Development's schema and data to match Production. Production data is not
+   touched. (Development data is only what debug builds wrote.)
+2. Run a **debug build of 3.0** from Xcode on your iPhone (signed in to your iCloud), and use
+   each tab once so every new type gets written: open Health with WHOOP connected (writes
+   DailyMetric, Workout, HealthBrief), open Food with the Anthropic key set (MealOption) and
+   with the image key set until a photo appears (DishImage).
+3. In **Schema → Record Types (Development)**, confirm the five new types exist and that
+   `CD_TodoList` / `CD_TaskItem` have **no** `CD_supabaseId` or `CD_updatedAt`.
+4. **Deploy Schema Changes** to Production. Check Production now lists all nine types:
+   the four from 2.x plus the five above.
 
 ### ⚠️ Do not press "Deploy Schema Changes" reflexively
 
@@ -91,8 +119,8 @@ Your **Development** environment may still carry `CD_supabaseId` and `CD_updated
 once it is deployed to Production. Deploying Development → Production while those leftovers
 exist would push them into Production forever.
 
-So: deploy **only** if you find a field the current app actually writes that is missing
-from Production. For 2.3, the expected outcome is that you find nothing and deploy nothing.
+So: deploy **only** after resetting Development as described above, so the only changes
+pending are the ones the current app actually writes.
 
 ### Rules to keep the schema deployable in future
 
@@ -137,6 +165,42 @@ through the paths this release changed.
 - [ ] Confirm there is only **one** navigation bar in the People tab and the search field
       sits under the "Contacts" title.
 
+### People: table and catch-up (on iPad or the Mac)
+
+- [ ] People → Contacts shows a table. Click a column header: it sorts.
+- [ ] Click a Priority cell → pick High. Click Reconnect → "2 weeks". Click Tags → toggle a tag.
+- [ ] ⌘-click three rows → the toolbar shows "3 selected" → Mark contacted today → Message.
+      All three show "Today" under Last contacted.
+- [ ] Double-click a row → the contact's page opens.
+- [ ] Catch Up → work through two cards with the M / 1 / → keys. "All caught up" at the end.
+- [ ] On iPhone: swipe a contact row right → Contacted.
+
+### Health
+
+- [ ] Settings (gear) → paste the WHOOP client ID and secret (same as Baseline) → Connect.
+      Sign in; the sheet closes and shows Connected.
+- [ ] Paste the Anthropic key. Back on Health, pull to refresh: recovery ring, six tiles and
+      the brief appear. Spot-check recovery, HRV and sleep against the WHOOP app.
+- [ ] The Apple Health prompt asks for steps, active energy and exercise minutes only.
+
+### Food
+
+- [ ] Food shows four cards for the current meal. Swipe right, swipe left, tap Having this.
+- [ ] Paste the OpenAI key in Settings; within a minute the top card gets a photo.
+- [ ] "This week" counts the picked meal (protein today, vegetables, paneer days).
+- [ ] Next morning, the new options avoid what you skipped.
+
+### Net Worth
+
+- [ ] After first opening the tab, `~/Library/Mobile Documents/iCloud~com~matodoapp~todo/Documents/`
+      exists on the Mac (Finder: iCloud Drive → Compass). Copy `networth.json` in (see
+      `docs/networth.md`); pull to refresh shows it. The eye button hides amounts.
+
+### Upgrade safety net
+
+- [ ] iCloud Drive → Compass → Backups holds `compass-backup-3.0-18-<date>.json` with your
+      lists, tasks and contacts.
+
 ### Destructive
 
 - [ ] **Erase All Data** → confirm tasks *and* contacts are both gone after relaunch.
@@ -152,7 +216,7 @@ through the paths this release changed.
 4. Choose **App Store Connect** → **Upload**.
 5. On the options screen:
    - Leave **Upload your app's symbols** checked (needed for readable crash reports).
-   - **Uncheck "Manage Version and Build Number"** — the project already sets 2.3 / 17, and
+   - **Uncheck "Manage Version and Build Number"** — the project already sets 3.0 / 18, and
      letting Xcode manage it can produce a build number you did not intend.
 6. Let it re-sign automatically, review the summary, **Upload**.
 
@@ -161,7 +225,7 @@ through the paths this release changed.
 - *Provisioning profile mismatch* — the App ID is missing the iCloud capability, or the
   CloudKit container is not assigned to it. Fix in the portal, then in Xcode use
   Signing & Capabilities → the refresh arrow next to the profile.
-- *Duplicate build* — App Store Connect has already seen 2.3 (17). Bump
+- *Duplicate build* — App Store Connect has already seen 3.0 (18). Bump
   `CURRENT_PROJECT_VERSION` and archive again.
 - *ITMS-91053, missing API declaration* — something now uses a required-reason API that
   `To Do/PrivacyInfo.xcprivacy` does not declare. The message names the API; add it with
@@ -179,27 +243,18 @@ through the paths this release changed.
 
 ### The upgrade test — do this on TestFlight, not locally
 
-Removing the sign-in gate is the riskiest part of 2.3, and it can only be tested honestly
-as a real upgrade. It has to happen here rather than in step 3, because installing a
-development-signed build over an App Store install does not reliably reproduce a real
-upgrade — the signing identity differs and the system may replace the app rather than
-update it.
+Install 3.0 over the 2.3 (17) TestFlight build you use today. Do not delete the app first.
 
-1. On a test device, install **the current App Store version (2.0)**.
-2. Sign in, create a list with a few tasks, and add a contact.
-3. Install the **2.3 TestFlight build** over it (do not delete the app first).
-4. Confirm:
-   - [ ] The app opens straight to the task list, with no sign-in screen.
-   - [ ] The list, tasks, and contact from 2.0 are all still there.
-   - [ ] Changes still sync to a second device signed into the same iCloud account.
+- [ ] Your lists, tasks and contacts are all there.
+- [ ] iCloud Drive → Compass → Backups has the 3.0 backup file.
+- [ ] A task added on the iPhone appears on the Mac app (and vice versa).
 
-If data is missing at step 4, **stop and do not promote the build.** The store file is
-unchanged by this release, so missing data would point at something more fundamental than
-the sign-in removal.
+This was rehearsed in the simulator: a 2.3 store with 3 lists, 17 tasks, 8 contacts and 8
+interactions opened in 3.0 with every record intact and the five new tables added. If data
+is missing on a real device, **stop and do not promote the build**; the backup file holds a
+readable copy.
 
----
-
-## Known gaps, not addressed in 2.3
+## Known gaps
 
 - `Contact.id` and `Interaction.id` are not unique. Two devices creating the same logical
   contact before syncing produce duplicates that nothing reconciles. CloudKit forbids
@@ -211,3 +266,6 @@ the sign-in removal.
   CloudKit failing asynchronously afterwards, which is why an unsigned build still dies on
   launch. A signed build with the iCloud entitlement does not hit that path.
 - UI tests cover the task flows only; the CRM tab has no automated coverage.
+- HealthKit is unavailable when the app runs on the Mac; Health shows WHOOP data only there.
+- The Net Worth file is produced on the Mac. If the Mac is off for a refresh, the tab shows
+  the previous snapshot with its date.

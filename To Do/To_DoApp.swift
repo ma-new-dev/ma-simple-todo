@@ -51,6 +51,8 @@ struct To_DoApp: App {
         .onAppear {
             if isScreenshotMode {
                 SampleData.inject(into: container.mainContext)
+            } else {
+                UpgradeBackup.runIfNeeded(container: container)
             }
         }
         .alert(

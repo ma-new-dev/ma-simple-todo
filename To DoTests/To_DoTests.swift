@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import To_Do
 
@@ -176,5 +177,32 @@ struct To_DoTests {
         #expect(summary.totals.vsNifty500Cr == nil)
         #expect(summary.managers.first?.irrPct == nil)
         #expect(NetWorthSummary.date(summary.asOf) != nil)
+    }
+
+    // MARK: - Upgrade backup
+
+    @Test @MainActor
+    func upgradeBackupIncludesTasksContactsAndInteractions() throws {
+        let container = try ModelContainer(
+            for: TodoList.self, TaskItem.self, Contact.self, Interaction.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = container.mainContext
+        let list = TodoList(name: "Work")
+        context.insert(list)
+        context.insert(TaskItem(title: "Send memo", list: list))
+        let contact = Contact(name: "Priya", tags: ["investor"])
+        context.insert(contact)
+        let interaction = Interaction(type: .call, notes: "Caught up")
+        interaction.contact = contact
+        context.insert(interaction)
+        try context.save()
+
+        let data = try UpgradeBackup.snapshot(in: context)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("Send memo"))
+        #expect(text.contains("Priya"))
+        #expect(text.contains("Caught up"))
+        #expect(!text.contains("photoData"))
     }
 }
