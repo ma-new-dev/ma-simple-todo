@@ -233,14 +233,9 @@ struct ContactTableView: View {
             if contact.tags.isEmpty {
                 Text("Add tag").foregroundStyle(.tertiary)
             } else {
-                HStack(spacing: 4) {
-                    ForEach(contact.tags.prefix(2), id: \.self) { TagChip(tag: $0) }
-                    if contact.tags.count > 2 {
-                        Text("+\(contact.tags.count - 2)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text(contact.tags.joined(separator: ", "))
+                    .foregroundStyle(Color("AccentColor"))
+                    .lineLimit(1)
             }
         }
         .menuStyle(.button)
