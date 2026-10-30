@@ -297,7 +297,11 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "To Do/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Compass;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Compass imports contacts into your personal CRM. Imported names, phone numbers, email addresses, and photos are stored in your own private iCloud account so they sync across your devices. They are never sent to Compass or to anyone else.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Compass reads your steps, active energy and Apple Watch exercise minutes to show yesterday's activity next to your WHOOP recovery. It never writes to Apple Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Compass does not write to Apple Health. Apple requires this text from every app that uses HealthKit; Compass only reads steps, active energy and exercise minutes.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -344,7 +348,11 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "To Do/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Compass;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Compass imports contacts into your personal CRM. Imported names, phone numbers, email addresses, and photos are stored in your own private iCloud account so they sync across your devices. They are never sent to Compass or to anyone else.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Compass reads your steps, active energy and Apple Watch exercise minutes to show yesterday's activity next to your WHOOP recovery. It never writes to Apple Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Compass does not write to Apple Health. Apple requires this text from every app that uses HealthKit; Compass only reads steps, active energy and exercise minutes.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
