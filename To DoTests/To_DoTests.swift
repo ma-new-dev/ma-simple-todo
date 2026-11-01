@@ -392,4 +392,46 @@ struct To_DoTests {
         #expect(summary.deployment?.doneCr == 9)                     // over-delivery counts
         #expect(summary.decisions.first?.kind == "add")
     }
+
+    // MARK: - Apple Watch data (build 22)
+
+    @Test @MainActor
+    func splitsInterpolateEachKilometre() {
+        let start = Date(timeIntervalSince1970: 0)
+        // Steady 6:00/km (1 m every 0.36 s) in 100 m samples, 2.5 km in all.
+        let samples = (0..<25).map { i in
+            (start: start.addingTimeInterval(Double(i) * 36), end: start.addingTimeInterval(Double(i + 1) * 36), meters: 100.0)
+        }
+        let splits = AppleHealthService.splits(from: samples)
+        #expect(splits.count == 2)
+        #expect(splits.allSatisfy { abs($0 - 360) < 0.001 })
+    }
+
+    @Test @MainActor
+    func watchRunMergesIntoTheMatchingWhoopSession() {
+        let start = date("2026-11-05").addingTimeInterval(7 * 3600)
+        let whoop = Workout(date: start.addingTimeInterval(-120), externalID: "w1", type: "running", durationMin: 42, source: "whoop")
+        let gym = Workout(date: start.addingTimeInterval(-3 * 3600), externalID: "w2", type: "weightlifting", durationMin: 55, source: "whoop")
+        #expect(AppleHealthService.matchingWhoopWorkout(start: start, end: start.addingTimeInterval(40 * 60), in: [gym, whoop]) === whoop)
+        #expect(AppleHealthService.matchingWhoopWorkout(start: start.addingTimeInterval(5 * 3600), end: start.addingTimeInterval(6 * 3600), in: [gym, whoop]) == nil)
+    }
+
+    @Test @MainActor
+    func healthFactsReportCardioFitnessAndTheLatestRun() {
+        let now = date("2026-11-05") // a Thursday
+        let days: [DailyMetric] = (0..<60).map { back in
+            let day = DailyMetric(date: Calendar.current.date(byAdding: .day, value: -back, to: now)!)
+            day.recovery = 60
+            if back % 5 == 0 { day.vo2Max = back < 30 ? 46.4 : 45.2 }
+            day.daylightMinutes = 12
+            return day
+        }
+        let run = Workout(date: now.addingTimeInterval(-86_400 + 7 * 3600), externalID: "r", type: "running", durationMin: 36.6, source: "whoop")
+        run.distanceKm = 6
+        run.avgHR = 141
+        let facts = HealthFacts(metrics: days, workouts: [run], now: now)
+        #expect(facts.goingWell.contains { $0.contains("Cardio Fitness (VO2 max) 46.4") })
+        #expect(facts.watch.contains { $0.contains("daylight averaged 12 min") })
+        #expect((facts.goingWell + facts.watch).contains { $0.contains("Latest run 6.0 km at 6:06/km, average HR 141") })
+    }
 }

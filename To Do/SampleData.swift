@@ -139,6 +139,12 @@ enum SampleData {
             m.steps = 11_000 + 3_000 * sin(t / 2.2)
             m.exerciseMinutes = 45 + 15 * sin(t / 2.9)
             m.recoverySource = "whoop"
+            if back % 6 == 2 { m.vo2Max = 44.2 + Double(182 - back) / 182 * 1.8 + 0.3 * sin(t) }
+            if back % 3 == 0 { m.cardioRecoveryBpm = 24 + 3 * sin(t / 5) + (back < 30 ? 1.5 : 0) }
+            m.daylightMinutes = 22 + 14 * sin(t / 3.3)
+            if back % 7 == 0 { m.weightKg = 66.1 + 0.3 * sin(t / 9) }
+            m.wristTempDeltaC = back == 0 ? 0.2 : 0.1 * sin(t)
+            m.breathingDisturbances = 4 + sin(t / 2)
             context.insert(m)
 
             let sport: String? = switch weekday {
@@ -155,6 +161,17 @@ enum SampleData {
                 workout.strain = sport == "padel" || sport == "cricket" ? 12.4 : (sport == "running" ? 13.1 : 11.2)
                 workout.avgHR = sport == "running" ? 141 : 112
                 workout.zoneMinutes = [10, 15, 12, 14, sport == "padel" ? 3 : 0.4, 0]
+                if sport == "running" {
+                    let km = 6 + Double(back % 3)
+                    workout.distanceKm = km
+                    workout.durationMin = km * 6.1
+                    workout.elevationGainM = 38
+                    workout.avgPowerW = 236
+                    workout.avgCadenceSpm = 166
+                    workout.effortScore = 6
+                    workout.splitsSecPerKm = (0..<Int(km)).map { 372 - Double($0) * 3 + (Double($0 % 2) * 6) }
+                    workout.healthKitID = "sample-hk-\(back)"
+                }
                 context.insert(workout)
             }
         }

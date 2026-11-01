@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The metrics the Health tab trends, with how to read and judge each.
 enum HealthMetric: String, CaseIterable, Identifiable {
-    case recovery, hrv, restingHR, sleep, strain
+    case recovery, hrv, restingHR, sleep, strain, vo2Max
 
     var id: String { rawValue }
 
@@ -14,12 +14,14 @@ enum HealthMetric: String, CaseIterable, Identifiable {
         case .restingHR: "Resting HR"
         case .sleep:     "Sleep"
         case .strain:    "Strain"
+        case .vo2Max:    "VO2 max"
         }
     }
 
     var shortTitle: String {
         switch self {
         case .restingHR: "RHR"
+        case .vo2Max:    "VO2"
         default: title
         }
     }
@@ -31,12 +33,13 @@ enum HealthMetric: String, CaseIterable, Identifiable {
         case .restingHR: "bpm"
         case .sleep:     "h"
         case .strain:    ""
+        case .vo2Max:    ""
         }
     }
 
     var decimals: Int {
         switch self {
-        case .sleep, .strain, .hrv: 1
+        case .sleep, .strain, .hrv, .vo2Max: 1
         default: 0
         }
     }
@@ -57,6 +60,7 @@ enum HealthMetric: String, CaseIterable, Identifiable {
         case .restingHR: .pink
         case .sleep:     .indigo
         case .strain:    .orange
+        case .vo2Max:    .mint
         }
     }
 
@@ -67,6 +71,7 @@ enum HealthMetric: String, CaseIterable, Identifiable {
         case .restingHR: day.restingHR
         case .sleep:     day.sleepHours
         case .strain:    day.dayStrain
+        case .vo2Max:    day.vo2Max
         }
     }
 

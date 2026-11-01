@@ -148,7 +148,7 @@ struct To_DoApp: App {
 
     private var screenshotInitialTab: Int {
         switch screenshotScreen {
-        case "health": return 1
+        case "health", "health_fitness": return 1
         case "food": return 2
         case "crm_dashboard", "crm_contacts": return 3
         case "networth": return 4

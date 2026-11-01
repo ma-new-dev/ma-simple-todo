@@ -140,6 +140,25 @@ struct HealthFacts: Equatable {
             watch.append("\(shortNights) of the last \(lastWeek.count) nights came in short of need.")
         }
 
+        // MARK: Apple Watch fitness
+
+        // Cardio Fitness and cardio recovery move slowly, so compare 30-day windows.
+        for (label, key, unit, threshold) in [
+            ("Cardio Fitness (VO2 max)", \DailyMetric.vo2Max, "", 0.5),
+            ("cardio recovery", \DailyMetric.cardioRecoveryBpm, " bpm", 2.0),
+        ] as [(String, KeyPath<DailyMetric, Double?>, String, Double)] {
+            guard let recent = avg(key, 0, 30, minimum: 2), let earlier = avg(key, 30, 60, minimum: 2),
+                  abs(recent - earlier) >= threshold else { continue }
+            let line = "30-day average \(label) \(Self.one(recent))\(unit), against \(Self.one(earlier))\(unit) the 30 days before."
+            if recent > earlier { well.append(line) } else { watch.append(line) }
+        }
+        if let daylight = avg(\.daylightMinutes, 1, 8, minimum: 4), daylight < 20 {
+            watch.append("Time in daylight averaged \(Self.int(daylight)) min a day this week.")
+        }
+        if let weight = days.last(where: { $0.weightKg != nil })?.weightKg, weight > 67 || weight < 64.5 {
+            watch.append("Weight \(Self.one(weight)) kg, outside the 65 to 66.5 kg range.")
+        }
+
         // MARK: Training load
 
         let loadRatio: Double? = {
@@ -195,7 +214,11 @@ struct HealthFacts: Equatable {
         let runs = thisWeek.filter { $0.type.lowercased().contains("run") }.count
         let weekday = (calendar.component(.weekday, from: now) + 5) % 7 + 1 // Monday = 1
         if !thisWeek.isEmpty {
-            let summary = "This week so far: \(gym) gym, \(runs) run\(runs == 1 ? "" : "s")."
+            var summary = "This week so far: \(gym) gym, \(runs) run\(runs == 1 ? "" : "s")."
+            if let run = thisWeek.filter({ $0.type.lowercased().contains("run") && ($0.distanceKm ?? 0) > 0.5 }).max(by: { $0.date < $1.date }),
+               let km = run.distanceKm, let pace = run.paceDisplay {
+                summary += " Latest run \(Self.one(km)) km at \(pace)" + (run.avgHR.map { ", average HR \(Self.int($0))." } ?? ".")
+            }
             if weekday >= 5, gym < 2 || runs == 0 {
                 watch.append(summary + (runs == 0 ? " The zone-2 run is still to do." : " Gym days are behind the plan of three."))
             } else if gym >= 2 || runs >= 1 {

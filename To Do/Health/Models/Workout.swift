@@ -14,9 +14,22 @@ final class Workout {
     var strain: Double?
     /// Minutes in each of Whoop's five HR zones, ascending. Empty when unknown.
     var zoneMinutes: [Double] = []
-    /// "whoop" | "healthkit"
+    /// "whoop" | "healthkit". A WHOOP session the watch also recorded stays "whoop" and
+    /// gains the watch's distance, pace and splits.
     var source: String = ""
     var notes: String = ""
+
+    // MARK: From the Apple Watch, when it recorded the same session (3.0 build 22)
+
+    /// The HealthKit workout merged into this one, so it isn't imported twice.
+    var healthKitID: String?
+    var elevationGainM: Double?
+    var avgPowerW: Double?
+    var avgCadenceSpm: Double?
+    /// Apple's 1-10 effort rating (the user's own, else the watch's estimate).
+    var effortScore: Double?
+    /// Seconds per kilometre for each full kilometre, in order.
+    var splitsSecPerKm: [Double] = []
 
     init(date: Date, externalID: String, type: String, durationMin: Double, source: String) {
         self.date = date

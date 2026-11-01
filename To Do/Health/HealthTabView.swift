@@ -4,7 +4,8 @@ import Charts
 
 /// The morning read, modelled on the Health Dashboard artifact: today's recovery and the
 /// brief first, then six-month trends, the key metrics against their 7-day, 30-day and
-/// six-month averages, last night's sleep against need, and training load.
+/// six-month averages, last night's sleep against need, training load, and what the Apple
+/// Watch adds (Cardio Fitness, cardio recovery, daylight, weight, GPS runs).
 struct HealthTabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -33,6 +34,7 @@ struct HealthTabView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
                 Group {
                     if !WhoopTokenStore.shared.isConnected && metrics.isEmpty {
@@ -47,6 +49,11 @@ struct HealthTabView: View {
                                 sleepCard
                                 trainingCard
                             }
+                            HStack(alignment: .top, spacing: 16) {
+                                FitnessCard(metrics: metrics)
+                                RunningCard(workouts: workouts)
+                            }
+                            .id("fitness")
                             footer
                         }
                     } else {
@@ -57,6 +64,8 @@ struct HealthTabView: View {
                             keyMetrics
                             sleepCard
                             trainingCard
+                            FitnessCard(metrics: metrics).id("fitness")
+                            RunningCard(workouts: workouts)
                             footer
                         }
                     }
@@ -64,6 +73,13 @@ struct HealthTabView: View {
                 .padding()
                 .frame(maxWidth: 1100)
                 .frame(maxWidth: .infinity)
+            }
+            .onAppear {
+                // Screenshot mode only: jump to the Apple Watch cards further down.
+                if ProcessInfo.processInfo.arguments.contains("health_fitness") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo("fitness", anchor: .top) }
+                }
+            }
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Health")

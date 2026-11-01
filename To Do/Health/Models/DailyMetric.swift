@@ -44,6 +44,20 @@ final class DailyMetric {
     var activeEnergyKcal: Double?
     var exerciseMinutes: Double?
 
+    // MARK: Apple Watch extras (3.0 build 22) — things WHOOP doesn't measure
+
+    /// Cardio Fitness, ml/kg/min. Sparse: the watch estimates it on outdoor walks and runs.
+    var vo2Max: Double?
+    /// Heart-rate drop in the minute after a workout, bpm (day's average).
+    var cardioRecoveryBpm: Double?
+    var daylightMinutes: Double?
+    /// From a scale or manual entry in Apple Health. `bodyMass` is WHOOP's profile weight.
+    var weightKg: Double?
+    var bodyFatPct: Double?
+    /// Sleeping wrist temperature against the watch's own baseline, °C.
+    var wristTempDeltaC: Double?
+    var breathingDisturbances: Double?
+
     // MARK: Provenance
 
     /// "whoop" | "none". There is deliberately no computed fallback score.
