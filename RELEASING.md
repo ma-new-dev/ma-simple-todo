@@ -5,7 +5,7 @@ Distribution certificate, and access to the developer portal. CI compiles the ap
 the tests, but it never signs, archives, or uploads — those need credentials that should
 not live in a repository.
 
-Current state: **version 3.0, build 18 ("Compass")**, on branch `compass-3.0`.
+Current state: **version 3.0, build 19 ("MA Compass" on the home screen)**, on branch `compass-3.0`.
 
 3.0 renames Folio to **Compass** (display name only: bundle ID `com.matodoapp.todo`, the
 CloudKit container and the on-device store are unchanged, so it installs as an update) and
@@ -198,7 +198,7 @@ through the paths this release changed.
 
 ### Upgrade safety net
 
-- [ ] iCloud Drive → Compass → Backups holds `compass-backup-3.0-18-<date>.json` with your
+- [ ] iCloud Drive → Compass → Backups holds `compass-backup-3.0-19-<date>.json` with your
       lists, tasks and contacts.
 
 ### Destructive
@@ -222,10 +222,14 @@ through the paths this release changed.
 
 ### If the upload is rejected
 
+- *90129, display name already taken* — Apple checks the home-screen name against every
+  app on the store, even for TestFlight-only builds. 3.0 (18) failed as "Compass"; the
+  display name is now "MA Compass". The upload itself succeeds and the failure only shows
+  under TestFlight → Build Uploads, so check there after every upload.
 - *Provisioning profile mismatch* — the App ID is missing the iCloud capability, or the
   CloudKit container is not assigned to it. Fix in the portal, then in Xcode use
   Signing & Capabilities → the refresh arrow next to the profile.
-- *Duplicate build* — App Store Connect has already seen 3.0 (18). Bump
+- *Duplicate build* — App Store Connect has already seen 3.0 (19). Bump
   `CURRENT_PROJECT_VERSION` and archive again.
 - *ITMS-91053, missing API declaration* — something now uses a required-reason API that
   `To Do/PrivacyInfo.xcprivacy` does not declare. The message names the API; add it with
