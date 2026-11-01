@@ -100,10 +100,19 @@ deploying would push them to Production permanently. So clean Development first:
    **`iCloud.com.matodoapp.todo`** → **Development** → **Reset Development Environment**.
    This resets Development's schema and data to match Production. Production data is not
    touched. (Development data is only what debug builds wrote.)
-2. Run a **debug build of 3.0** from Xcode on your iPhone (signed in to your iCloud), and use
-   each tab once so every new type gets written: open Health with WHOOP connected (writes
-   DailyMetric, Workout, HealthBrief), open Food (MealOption) and wait until a dish picture
-   appears (DishImage; needs Apple Intelligence on).
+2. Install a **debug build** on an iPhone signed in to your iCloud and launch it with the
+   argument `INIT_CLOUDKIT_SCHEMA`:
+   ```sh
+   xcodebuild build -project "To Do.xcodeproj" -scheme "To Do" -configuration Debug \
+     -destination "id=<iPhone UDID>" -derivedDataPath build/dd -allowProvisioningUpdates
+   xcrun devicectl device install app --device <iPhone UDID> "build/dd/Build/Products/Debug-iphoneos/To Do.app"
+   xcrun devicectl device process launch --console --device <iPhone UDID> com.matodoapp.todo INIT_CLOUDKIT_SCHEMA
+   ```
+   It writes every record type and every field (`CloudKitSchemaSetup`) using a throwaway
+   store, so the data on the phone is never opened. Using the tabs instead is not enough:
+   a field that was never filled is never created, and Production then rejects saves that
+   use it. The debug build replaces the TestFlight install; reinstall from TestFlight
+   afterwards (your data stays).
 3. In **Schema → Record Types (Development)**, confirm the five new types exist and that
    `CD_TodoList` / `CD_TaskItem` have **no** `CD_supabaseId` or `CD_updatedAt`.
 4. **Deploy Schema Changes** to Production. Check Production now lists all nine types:

@@ -18,8 +18,18 @@ struct To_DoApp: App {
     @State private var eraseDataErrorMessage: String?
     private let launchArguments = ProcessInfo.processInfo.arguments
     private let storage: StorageBootstrap
+    /// Set only in the debug-only schema setup run (see CloudKitSchemaSetup).
+    private let schemaSetupMessage: String?
 
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("INIT_CLOUDKIT_SCHEMA") {
+            schemaSetupMessage = CloudKitSchemaSetup.run(models: StorageBootstrap.models, containerID: Self.cloudKitContainerID)
+            storage = .failed(message: "")
+            return
+        }
+        #endif
+        schemaSetupMessage = nil
         storage = StorageBootstrap.make()
         if case .ready(_, let warning) = storage {
             _storageWarningMessage = State(initialValue: warning)
@@ -28,12 +38,16 @@ struct To_DoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            switch storage {
+            if let schemaSetupMessage {
+                Text(schemaSetupMessage).padding()
+            } else {
+                switch storage {
             case .ready(let container, _):
                 mainInterface(container: container)
                     .modelContainer(container)
             case .failed(let message):
                 StorageFailureView(message: message)
+            }
             }
         }
     }
@@ -160,23 +174,26 @@ fileprivate enum StorageBootstrap {
     /// Neither the CloudKit-backed nor the local-only store could be opened.
     case failed(message: String)
 
+    static let models: [any PersistentModel.Type] = [
+        TodoList.self,
+        TaskItem.self,
+        Contact.self,
+        Interaction.self,
+        // 3.0 — additive only. Existing record types are untouched, so a 2.x store
+        // migrates without changes. Each new type must be deployed to the CloudKit
+        // Production schema before release (see RELEASING.md).
+        DailyMetric.self,
+        Workout.self,
+        HealthBrief.self,
+        MealOption.self,
+        DishImage.self,
+    ]
+    static let schema = Schema(models)
+
     static func make() -> StorageBootstrap {
         let launchArguments = ProcessInfo.processInfo.arguments
         let isInMemoryStore = launchArguments.contains("UITEST_IN_MEMORY_STORE")
-        let schema = Schema([
-            TodoList.self,
-            TaskItem.self,
-            Contact.self,
-            Interaction.self,
-            // 3.0 — additive only. Existing record types are untouched, so a 2.x store
-            // migrates without changes. Each new type must be deployed to the CloudKit
-            // Production schema before release (see RELEASING.md).
-            DailyMetric.self,
-            Workout.self,
-            HealthBrief.self,
-            MealOption.self,
-            DishImage.self,
-        ])
+        let schema = Self.schema
         let cloudKitConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: isInMemoryStore,
