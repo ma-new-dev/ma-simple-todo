@@ -6,6 +6,7 @@ struct DashboardView: View {
     @Query private var contacts: [Contact]
     @StateObject private var vm = ContactsViewModel()
     @State private var showAddContact = false
+    @State private var showCatchUp = false
 
     private var overdue: [Contact] { vm.overdueReconnects(in: contacts) }
     private var upcoming: [Contact] { vm.upcomingReconnects(in: contacts, days: 7) }
@@ -21,6 +22,10 @@ struct DashboardView: View {
                     // "0 / 0 / 0" above the empty state made first launch look broken.
                     if !contacts.isEmpty {
                         statsRow
+                    }
+
+                    if !overdue.isEmpty || !contacts.isEmpty {
+                        catchUpBanner
                     }
 
                     // Overdue reconnects
@@ -79,6 +84,33 @@ struct DashboardView: View {
         .sheet(isPresented: $showAddContact) {
             ContactEditView(mode: .add)
         }
+    }
+
+    // MARK: - Catch Up
+
+    private var catchUpBanner: some View {
+        let count = ContactActions.catchUpQueue(from: contacts).count
+        return Button { showCatchUp = true } label: {
+            HStack {
+                Image(systemName: "person.crop.circle.badge.clock")
+                    .font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(count == 0 ? "All caught up" : "Catch up with \(count) \(count == 1 ? "person" : "people")")
+                        .font(.headline)
+                    Text("One card at a time: contacted, snooze, or skip")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            }
+            .padding()
+            .background(Color.accentColor.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(count == 0)
+        .sheet(isPresented: $showCatchUp) { CatchUpView() }
     }
 
     // MARK: - Stats Row

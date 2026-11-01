@@ -44,15 +44,31 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // Tags are stable indices used by screenshot mode (To_DoApp.screenshotInitialTab).
+        // .sidebarAdaptable turns the five tabs into a sidebar on iPad and on the Mac,
+        // where the bottom bar wastes the width the CRM table needs.
         TabView(selection: $selectedTabIndex) {
             todoTab
                 .tabItem { Label("Tasks", systemImage: "checklist") }
                 .tag(0)
 
+            HealthTabView()
+                .tabItem { Label("Health", systemImage: "heart.text.square") }
+                .tag(1)
+
+            FoodTabView()
+                .tabItem { Label("Food", systemImage: "fork.knife") }
+                .tag(2)
+
             CRMRootView(initialCRMTab: initialCRMTab)
                 .tabItem { Label("People", systemImage: "person.2.fill") }
-                .tag(1)
+                .tag(3)
+
+            NetWorthTabView()
+                .tabItem { Label("Net Worth", systemImage: "indianrupeesign.circle") }
+                .tag(4)
         }
+        .tabViewStyle(.sidebarAdaptable)
     }
 
     // MARK: - Tasks Tab

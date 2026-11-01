@@ -9,6 +9,18 @@ final class ContactsViewModel: ObservableObject {
     @Published var selectedTag: String? = nil
     @Published var selectedCity: String? = nil
     @Published var sortOrder: SortOrder = .nameAsc
+    @Published var scope: Scope = .all
+
+    /// One-tap slices for the "who needs attention" question, shown as chips above the list.
+    enum Scope: String, CaseIterable, Identifiable {
+        case all            = "All"
+        case overdue        = "Overdue"
+        case thisWeek       = "Due this week"
+        case highPriority   = "High priority"
+        case neverContacted = "Never contacted"
+
+        var id: String { rawValue }
+    }
 
     enum SortOrder: String, CaseIterable {
         case nameAsc        = "Name (A–Z)"
@@ -33,6 +45,17 @@ final class ContactsViewModel: ObservableObject {
                 $0.city.lowercased().contains(q)        ||
                 $0.tags.contains(where: { $0.lowercased().contains(q) })
             }
+        }
+
+        // Scope chip
+        let now = Date()
+        let weekOut = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
+        switch scope {
+        case .all:            break
+        case .overdue:        result = result.filter { $0.isReconnectOverdue }
+        case .thisWeek:       result = result.filter { ($0.nextReconnect ?? .distantFuture) <= weekOut }
+        case .highPriority:   result = result.filter { $0.priority == .high }
+        case .neverContacted: result = result.filter { $0.lastContacted == nil }
         }
 
         // Priority filter
