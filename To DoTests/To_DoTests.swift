@@ -434,4 +434,25 @@ struct To_DoTests {
         #expect(facts.watch.contains { $0.contains("daylight averaged 12 min") })
         #expect((facts.goingWell + facts.watch).contains { $0.contains("Latest run 6.0 km at 6:06/km, average HR 141") })
     }
+
+    @Test @MainActor
+    func healthExportCarriesWatchDataOnly() throws {
+        let day = DailyMetric(date: date("2026-11-04"))
+        day.vo2Max = 46.33
+        day.recovery = 70                    // WHOOP: not exported
+        let whoopOnly = DailyMetric(date: date("2026-11-03"))
+        whoopOnly.hrv = 50
+        let run = Workout(date: date("2026-11-04"), externalID: "w", type: "running", durationMin: 36.6, source: "whoop")
+        run.healthKitID = "hk"
+        run.distanceKm = 6
+        run.strain = 13.14
+        let gym = Workout(date: date("2026-11-03"), externalID: "g", type: "weightlifting", durationMin: 55, source: "whoop")
+        let file = HealthExport.make(metrics: [day, whoopOnly], workouts: [run, gym], now: date("2026-11-05"))
+        #expect(file.days.count == 1)
+        #expect(file.days[0].vo2Max == 46.3)
+        #expect(file.workouts.count == 1)
+        #expect(file.workouts[0].paceSecPerKm == 366)
+        #expect(file.workouts[0].whoopStrain == 13.1)
+        _ = try JSONEncoder().encode(file)
+    }
 }

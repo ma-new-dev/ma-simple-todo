@@ -107,6 +107,7 @@ struct HealthTabView: View {
             await whoop.syncIfStale(into: modelContext)
         }
         await AppleHealthService.shared.sync(into: modelContext)
+        HealthExport.write(from: modelContext)
 
         let hasData = today?.hasPhysiology == true || yesterday?.hasPhysiology == true
         // Free and on-device, so rewrite it whenever fresher WHOOP data has arrived.
