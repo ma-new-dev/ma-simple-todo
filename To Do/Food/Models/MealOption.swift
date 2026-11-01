@@ -57,6 +57,8 @@ final class MealOption {
     var proteinSources: [String] = []
     var grains: [String] = []
     var isGlutenMeal: Bool = false
+    /// One line on why it was offered today ("Prachi's pick for Thursday", "Adds tofu").
+    var reason: String = ""
 
     var decisionRaw: String = MealDecision.pending.rawValue
     var decidedAt: Date?

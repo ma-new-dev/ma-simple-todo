@@ -77,11 +77,32 @@ enum WhoopAPI {
 
     // MARK: Authenticated reads
 
+    /// Every record since `start`, following WHOOP's page tokens (25 per page). Capped
+    /// at `maxPages` so a bad token can't loop forever.
+    static func getAll<Record: Decodable>(
+        _ path: Path,
+        of type: Record.Type,
+        start: Date,
+        token: String,
+        maxPages: Int = 12
+    ) async throws -> [Record] {
+        var records: [Record] = []
+        var next: String?
+        for _ in 0..<maxPages {
+            let page = try await getPage(path, of: type, start: start, nextToken: next, token: token)
+            records += page.records
+            guard let token = page.nextToken, !token.isEmpty else { break }
+            next = token
+        }
+        return records
+    }
+
     static func getPage<Record: Decodable>(
         _ path: Path,
         of: Record.Type,
         limit: Int = 25,
         start: Date? = nil,
+        nextToken: String? = nil,
         token: String
     ) async throws -> WhoopPage<Record> {
         var components = URLComponents(string: host + path.rawValue)!
@@ -90,6 +111,9 @@ enum WhoopAPI {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
             items.append(URLQueryItem(name: "start", value: formatter.string(from: start)))
+        }
+        if let nextToken {
+            items.append(URLQueryItem(name: "nextToken", value: nextToken))
         }
         components.queryItems = items
 

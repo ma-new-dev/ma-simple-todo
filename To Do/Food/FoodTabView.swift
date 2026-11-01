@@ -13,7 +13,6 @@ struct FoodTabView: View {
     @State private var imageService = DishImageService.shared
     @State private var slot: MealSlot = .current()
     @State private var day = Calendar.current.startOfDay(for: .now)
-    @State private var showSettings = false
 
     private var todays: [MealOption] {
         allOptions.filter { $0.date == day }.sorted { $0.sortOrder < $1.sortOrder }
@@ -65,7 +64,6 @@ struct FoodTabView: View {
             .navigationTitle(navigationTitle)
             .toolbar { toolbar }
             .task(id: day) { await loadDay() }
-            .sheet(isPresented: $showSettings) { SettingsView() }
         }
     }
 
@@ -77,7 +75,6 @@ struct FoodTabView: View {
 
     private func loadDay() async {
         guard !ProcessInfo.processInfo.arguments.contains("SCREENSHOT_MODE") else { return }
-        guard KeychainStore.get(.anthropicAPIKey) != nil else { return }
         await planner.ensurePlan(for: day, in: modelContext)
     }
 
@@ -90,14 +87,6 @@ struct FoodTabView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 320)
-        } else if KeychainStore.get(.anthropicAPIKey) == nil {
-            ContentUnavailableView {
-                Label("Add an Anthropic key", systemImage: "fork.knife")
-            } description: {
-                Text("The day's options are planned by Claude from Prachi's October plan and what you've liked.")
-            } actions: {
-                Button("Open Settings") { showSettings = true }.buttonStyle(.borderedProminent)
-            }
         } else {
             ContentUnavailableView {
                 Label("No options yet", systemImage: "fork.knife")
@@ -251,7 +240,6 @@ struct FoodTabView: View {
                     Task { await planner.generate(for: day, slots: [slot], in: modelContext) }
                 }
                 .disabled(planner.isGenerating)
-                Button("Settings", systemImage: "gearshape") { showSettings = true }
             } label: {
                 Label("More", systemImage: "ellipsis.circle")
             }
@@ -294,10 +282,16 @@ private struct SwipeCard: View {
                 Text(option.name)
                     .font(.title3.weight(.bold))
                     .lineLimit(2)
+                if !option.reason.isEmpty {
+                    Label(option.reason, systemImage: "sparkles")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .lineLimit(1)
+                }
                 Text(option.detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(option.reason.isEmpty ? 3 : 2)
                 HStack(spacing: 6) {
                     Chip(text: "\(Int(option.proteinGrams)) g protein", color: .blue)
                     if option.isGlutenMeal { Chip(text: "gluten", color: .orange) }

@@ -5,7 +5,7 @@ Distribution certificate, and access to the developer portal. CI compiles the ap
 the tests, but it never signs, archives, or uploads — those need credentials that should
 not live in a repository.
 
-Current state: **version 3.0, build 19 ("MA Compass" on the home screen)**, on branch `compass-3.0`.
+Current state: **version 3.0, build 20 ("MA Compass" on the home screen)**, on branch `compass-3.0`.
 
 3.0 renames Folio to **Compass** (display name only: bundle ID `com.matodoapp.todo`, the
 CloudKit container and the on-device store are unchanged, so it installs as an update) and
@@ -102,8 +102,8 @@ deploying would push them to Production permanently. So clean Development first:
    touched. (Development data is only what debug builds wrote.)
 2. Run a **debug build of 3.0** from Xcode on your iPhone (signed in to your iCloud), and use
    each tab once so every new type gets written: open Health with WHOOP connected (writes
-   DailyMetric, Workout, HealthBrief), open Food with the Anthropic key set (MealOption) and
-   with the image key set until a photo appears (DishImage).
+   DailyMetric, Workout, HealthBrief), open Food (MealOption) and wait until a dish picture
+   appears (DishImage; needs Apple Intelligence on).
 3. In **Schema → Record Types (Development)**, confirm the five new types exist and that
    `CD_TodoList` / `CD_TaskItem` have **no** `CD_supabaseId` or `CD_updatedAt`.
 4. **Deploy Schema Changes** to Production. Check Production now lists all nine types:
@@ -179,14 +179,17 @@ through the paths this release changed.
 
 - [ ] Settings (gear) → paste the WHOOP client ID and secret (same as Baseline) → Connect.
       Sign in; the sheet closes and shows Connected.
-- [ ] Paste the Anthropic key. Back on Health, pull to refresh: recovery ring, six tiles and
-      the brief appear. Spot-check recovery, HRV and sleep against the WHOOP app.
+- [ ] Back on Health, pull to refresh: recovery ring, six tiles and the Going well / Watch /
+      Work on brief appear (written on-device by Apple Intelligence; plain computed lines if
+      it is off). Spot-check recovery, HRV and sleep against the WHOOP app.
 - [ ] The Apple Health prompt asks for steps, active energy and exercise minutes only.
 
 ### Food
 
-- [ ] Food shows four cards for the current meal. Swipe right, swipe left, tap Having this.
-- [ ] Paste the OpenAI key in Settings; within a minute the top card gets a photo.
+- [ ] Food shows four cards for the current meal, each with a one-line reason. Swipe right,
+      swipe left, tap Having this.
+- [ ] With Apple Intelligence on, the top card gets an Image Playground illustration within
+      a minute (only while the app is open).
 - [ ] "This week" counts the picked meal (protein today, vegetables, paneer days).
 - [ ] Next morning, the new options avoid what you skipped.
 
@@ -240,8 +243,9 @@ through the paths this release changed.
 ## 5. After upload
 
 - Processing takes 5–30 minutes before the build appears in TestFlight.
-- **Export compliance**: the app's only network calls are HTTPS to WHOOP, Anthropic and
-  OpenAI through Apple's URLSession, which is exempt standard encryption, so the answer is *no*. Adding `ITSAppUsesNonExemptEncryption` =
+- **Export compliance**: the app's only network calls are HTTPS to WHOOP through Apple's
+  URLSession, which is exempt standard encryption, so the answer is *no*. The brief, meal
+  choices and pictures run on-device. Adding `ITSAppUsesNonExemptEncryption` =
   `<false/>` to `Info.plist` removes the prompt on every future upload.
 - Internal testers get the build immediately. External testers require Beta App Review.
 

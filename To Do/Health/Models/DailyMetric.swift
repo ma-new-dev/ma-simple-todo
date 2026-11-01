@@ -27,6 +27,10 @@ final class DailyMetric {
     var remPct: Double?
     var respiratoryRate: Double?
     var disturbanceCount: Int?
+    /// WHOOP's sleep need for the night, all parts included.
+    var sleepNeedHours: Double?
+    /// The part of that need carried over from earlier short nights.
+    var sleepDebtHours: Double?
 
     var dayStrain: Double?
     var kilojoules: Double?

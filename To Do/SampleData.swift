@@ -156,6 +156,7 @@ enum SampleData {
         for (index, meal) in meals.enumerated() {
             let option = MealOption(date: Date(), slot: meal.0, sortOrder: index, name: meal.1, detail: meal.2)
             (option.proteinGrams, option.vegetables, option.proteinSources, option.grains, option.isGlutenMeal) = (meal.3, meal.4, meal.5, meal.6, meal.7)
+            option.reason = ["Prachi's pick for Friday", "You liked this last week", "Adds tofu: 1 of 3-4 meals so far", "From Prachi's Week 1 plan"][index % 4]
             context.insert(option)
         }
 

@@ -17,9 +17,6 @@ nonisolated enum KeychainStore {
         case whoopAccessToken  = "whoop.accessToken"
         case whoopRefreshToken = "whoop.refreshToken"
         case whoopExpiresAt    = "whoop.expiresAt"
-        case anthropicAPIKey   = "anthropic.apiKey"
-        /// OpenAI key, used only to draw one photo per new dish in the Food tab.
-        case imageAPIKey       = "openai.apiKey"
     }
 
     static func set(_ value: String?, for key: Key) {

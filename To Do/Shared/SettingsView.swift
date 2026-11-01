@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// The keys and connections the Health and Food tabs need. Everything secret goes to the
-/// Keychain; nothing is compiled into the app.
+/// The WHOOP connection the Health tab needs. The secret goes to the Keychain; nothing is
+/// compiled into the app. Writing and pictures run on-device, so there are no other keys.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var whoopClientID = KeychainStore.get(.whoopClientID) ?? ""
     @State private var whoopClientSecret = KeychainStore.get(.whoopClientSecret) ?? ""
-    @State private var anthropicKey = KeychainStore.get(.anthropicAPIKey) ?? ""
-    @State private var imageKey = KeychainStore.get(.imageAPIKey) ?? ""
 
     @State private var whoopConnected = WhoopTokenStore.shared.isConnected
     @State private var isConnecting = false
@@ -44,19 +42,11 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    SecureField("sk-ant-…", text: $anthropicKey)
+                    Label(OnDeviceModel.unavailableReason ?? "Apple Intelligence is on.", systemImage: "apple.intelligence")
                 } header: {
-                    Text("Anthropic API key")
+                    Text("Health brief and food")
                 } footer: {
-                    Text("Writes the morning health brief and plans the day's meals.")
-                }
-
-                Section {
-                    SecureField("sk-…", text: $imageKey)
-                } header: {
-                    Text("OpenAI API key (food photos)")
-                } footer: {
-                    Text("Draws one photo per new dish, once, then reuses it. Optional: without it, dishes show an illustrated card.")
+                    Text("The morning brief, meal choices and dish pictures run on this device with Apple Intelligence. Free, and nothing leaves the phone.")
                 }
 
                 if let message {
@@ -79,8 +69,6 @@ struct SettingsView: View {
     private func save() {
         KeychainStore.set(whoopClientID, for: .whoopClientID)
         KeychainStore.set(whoopClientSecret, for: .whoopClientSecret)
-        KeychainStore.set(anthropicKey, for: .anthropicAPIKey)
-        KeychainStore.set(imageKey, for: .imageAPIKey)
     }
 
     private func connectWhoop() async {

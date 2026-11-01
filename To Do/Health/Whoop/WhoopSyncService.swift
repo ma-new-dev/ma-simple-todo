@@ -43,7 +43,8 @@ final class WhoopSyncService {
         await sync(into: context)
     }
 
-    func sync(into context: ModelContext, daysBack: Int = 21) async {
+    /// 62 days so the brief can compare the last 30 with the 30 before.
+    func sync(into context: ModelContext, daysBack: Int = 62) async {
         guard !isSyncing else { return }
         isSyncing = true
         lastError = nil
@@ -53,17 +54,17 @@ final class WhoopSyncService {
             let token = try await WhoopTokenStore.shared.validAccessToken()
             let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date())!
 
-            async let recoveries = WhoopAPI.getPage(.recovery, of: WhoopRecovery.self, start: start, token: token)
-            async let sleeps = WhoopAPI.getPage(.sleep, of: WhoopSleep.self, start: start, token: token)
-            async let cycles = WhoopAPI.getPage(.cycle, of: WhoopCycle.self, start: start, token: token)
-            async let workouts = WhoopAPI.getPage(.workout, of: WhoopWorkout.self, start: start, token: token)
+            async let recoveries = WhoopAPI.getAll(.recovery, of: WhoopRecovery.self, start: start, token: token)
+            async let sleeps = WhoopAPI.getAll(.sleep, of: WhoopSleep.self, start: start, token: token)
+            async let cycles = WhoopAPI.getAll(.cycle, of: WhoopCycle.self, start: start, token: token)
+            async let workouts = WhoopAPI.getAll(.workout, of: WhoopWorkout.self, start: start, token: token)
 
             let (r, s, c, w) = try await (recoveries, sleeps, cycles, workouts)
 
-            apply(recoveries: r.records, into: context)
-            apply(sleeps: s.records, into: context)
-            apply(cycles: c.records, into: context)
-            apply(workouts: w.records, into: context)
+            apply(recoveries: r, into: context)
+            apply(sleeps: s, into: context)
+            apply(cycles: c, into: context)
+            apply(workouts: w, into: context)
 
             // Body measurement is a single current value, not a series.
             if let body = try? await WhoopAPI.getObject(.bodyMeasurement, of: WhoopBodyMeasurement.self, token: token),
@@ -105,6 +106,8 @@ final class WhoopSyncService {
             day.sleepConsistency = score.sleepConsistencyPercentage
             day.sleepEfficiency = score.sleepEfficiencyPercentage
             day.respiratoryRate = score.respiratoryRate
+            day.sleepNeedHours = score.sleepNeeded?.totalHours
+            day.sleepDebtHours = score.sleepNeeded?.needFromSleepDebtMilli.map { $0 / 3_600_000 }
 
             if let stages = score.stageSummary {
                 day.sleepHours = stages.asleepHours

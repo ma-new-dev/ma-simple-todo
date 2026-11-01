@@ -70,7 +70,11 @@ struct HealthTabView: View {
         await AppleHealthService.shared.sync(into: modelContext)
 
         let hasData = today?.hasPhysiology == true || yesterday?.hasPhysiology == true
-        if hasData, KeychainStore.get(.anthropicAPIKey) != nil, forceBrief || todaysBrief == nil {
+        // Free and on-device, so rewrite it whenever fresher WHOOP data has arrived.
+        let briefIsStale = todaysBrief.map { brief in
+            whoop.lastSyncedAt.map { brief.createdAt < $0 } ?? false
+        } ?? true
+        if hasData, forceBrief || briefIsStale {
             await briefService.generate(in: modelContext)
         }
     }
@@ -154,7 +158,12 @@ struct HealthTabView: View {
             VStack(alignment: .leading, spacing: 14) {
                 BriefColumn(title: "Going well", icon: "arrow.up.circle.fill", color: .green, items: brief.goingWell)
                 BriefColumn(title: "Watch", icon: "exclamationmark.circle.fill", color: .orange, items: brief.watch)
-                BriefColumn(title: "Today", icon: "checklist", color: .blue, items: brief.today)
+                BriefColumn(title: "Work on", icon: "checklist", color: .blue, items: brief.today)
+                if briefService.usedFallback, let reason = OnDeviceModel.unavailableReason {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding()
             .background(Color(.secondarySystemGroupedBackground))
@@ -163,9 +172,6 @@ struct HealthTabView: View {
             Label(error, systemImage: "exclamationmark.triangle")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        } else if KeychainStore.get(.anthropicAPIKey) == nil {
-            Button("Add an Anthropic key for the morning brief") { showSettings = true }
-                .font(.footnote)
         }
     }
 

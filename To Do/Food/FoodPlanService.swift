@@ -1,12 +1,14 @@
 import Foundation
+import FoundationModels
 import SwiftData
 
 /// Plans each day's breakfast, lunch and dinner options from Prachi's plan, and learns
 /// from what he swipes and picks.
 ///
-/// Learning is deliberately simple and visible: the planner sees which dishes he liked,
-/// skipped and actually chose over the last four weeks, plus this week's balance against
-/// Prachi's caps, and is told to lean toward the former and fill the latter's gaps.
+/// Everything runs on the phone and costs nothing. `FoodPicker` applies Prachi's rules to
+/// the bundled dish catalog and ranks what's left by his last four weeks of swipes and
+/// picks and this week's gaps; Apple's on-device model then keeps four of the top eight
+/// and says why. Without Apple Intelligence the picker's own top four are shown.
 @Observable
 @MainActor
 final class FoodPlanService {
@@ -61,106 +63,119 @@ final class FoodPlanService {
         await generate(for: date, slots: MealSlot.allCases, in: context)
     }
 
-    /// Replaces the undecided options for `slots` with fresh ones. Options he already
-    /// liked or chose are kept, so a refresh never loses a pick.
+    /// Offers fresh options for `slots`. Options he already liked or chose stay, skips
+    /// stay as history, and nothing already shown today comes back.
     func generate(for date: Date, slots: [MealSlot], in context: ModelContext) async {
         guard !isGenerating else { return }
         isGenerating = true
         lastError = nil
         defer { isGenerating = false }
 
-        do {
-            let result = try await ClaudeClient.structured(
-                PlanResult.self,
-                system: Self.systemPrompt,
-                user: buildContext(for: date, slots: slots, in: context),
-                schema: PlanResult.schema(slots: slots),
-                effort: "medium"
-            )
+        let day = Calendar.current.startOfDay(for: date)
+        let history = recentHistory(before: day, in: context)
+        let week = weekBalance(for: day, in: context)
 
-            let existing = options(for: date, in: context)
-            for slot in slots {
-                for stale in existing where stale.slot == slot && (stale.decision == .pending || stale.decision == .skipped) {
-                    context.delete(stale)
-                }
-                let kept = existing.filter { $0.slot == slot && ($0.decision == .liked || $0.decision == .chosen) }
-                let base = slotBase(slot)
-                for (index, dish) in result.dishes(for: slot).prefix(Self.optionsPerSlot).enumerated() {
-                    let option = MealOption(
-                        date: date, slot: slot, sortOrder: base + kept.count + index,
-                        name: dish.name, detail: dish.detail
-                    )
-                    option.proteinGrams = dish.proteinG
-                    option.vegetables = dish.vegetables
-                    option.proteinSources = dish.proteinSources
-                    option.grains = dish.grains
-                    option.isGlutenMeal = dish.isGlutenMeal
-                    context.insert(option)
-                }
+        for slot in slots {
+            let existing = options(for: day, in: context).filter { $0.slot == slot }
+            let picker = FoodPicker(
+                dishes: FoodCatalog.dishes, date: day, slot: slot, history: history,
+                week: week, shownToday: Set(existing.map(\.name))
+            )
+            let shortlist = Array(picker.scored().prefix(Self.shortlistSize))
+            guard !shortlist.isEmpty else {
+                lastError = "No more \(slot.title.lowercased()) options fit Prachi's rules today."
+                continue
             }
-            try context.save()
-        } catch {
-            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let fallback = picker.pick(Self.optionsPerSlot)
+            let chosen = await chooseOnDevice(from: shortlist, slot: slot, history: history, week: week) ?? fallback
+
+            for stale in existing where stale.decision == .pending {
+                context.delete(stale)
+            }
+            let base = slotBase(slot) + existing.count
+            for (index, pick) in chosen.enumerated() {
+                let option = MealOption(date: day, slot: slot, sortOrder: base + index, name: pick.dish.name, detail: pick.dish.detail)
+                option.proteinGrams = pick.dish.protein
+                option.vegetables = pick.dish.vegetables
+                option.proteinSources = pick.dish.proteins
+                option.grains = pick.dish.grains
+                option.isGlutenMeal = pick.dish.gluten
+                option.reason = pick.reason
+                context.insert(option)
+            }
         }
+        try? context.save()
     }
+
+    /// The model sees this many of the picker's best and keeps four.
+    static let shortlistSize = 8
 
     private func slotBase(_ slot: MealSlot) -> Int {
         (MealSlot.allCases.firstIndex(of: slot) ?? 0) * 100
     }
 
-    // MARK: - Context
-
-    private func buildContext(for date: Date, slots: [MealSlot], in context: ModelContext) -> String {
-        let calendar = Calendar.current
-        var lines: [String] = []
-        lines.append("PLANNING FOR: \(date.formatted(.dateTime.weekday(.wide).day().month(.wide))).")
-        lines.append("Meals to plan: " + slots.map(\.title).joined(separator: ", ") + ".")
-        if calendar.component(.weekday, from: date) == 3 {
-            lines.append("It is Tuesday: no-egg day.")
-        }
-        let planWeek = (calendar.component(.weekOfYear, from: date) % 4) + 1
-        lines.append("This week's Prachi week to lean on (for its 4 core vegetables): Week \(planWeek). Other weeks' dishes are fine too.")
-
-        // Taste history: last 28 days of decisions.
-        let cutoff = calendar.date(byAdding: .day, value: -28, to: calendar.startOfDay(for: date)) ?? date
-        let today = calendar.startOfDay(for: date)
+    private func recentHistory(before day: Date, in context: ModelContext) -> [FoodPicker.Past] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -28, to: day) ?? day
         let pending = MealDecision.pending.rawValue
-        let history = (try? context.fetch(FetchDescriptor<MealOption>(
-            predicate: #Predicate { $0.date >= cutoff && $0.date < today && $0.decisionRaw != pending },
-            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        let rows = (try? context.fetch(FetchDescriptor<MealOption>(
+            predicate: #Predicate { $0.date >= cutoff && $0.date < day && $0.decisionRaw != pending }
         ))) ?? []
+        return rows.map { FoodPicker.Past(name: $0.name, date: $0.date, decision: $0.decision) }
+    }
 
-        let chosen = history.filter { $0.decision == .chosen }.map(\.name)
-        let liked = history.filter { $0.decision == .liked }.map(\.name)
+    // MARK: - On-device choice
+
+    /// Asks Apple's on-device model to keep four of the shortlist and say why in a line.
+    /// Returns nil when the model is unavailable or its answer doesn't check out, and the
+    /// picker's own order is used instead.
+    private func chooseOnDevice(
+        from shortlist: [FoodPicker.Scored], slot: MealSlot,
+        history: [FoodPicker.Past], week: WeekBalance
+    ) async -> [FoodPicker.Scored]? {
+        guard OnDeviceModel.isAvailable, shortlist.count > Self.optionsPerSlot else { return nil }
+
+        let liked = history.filter { $0.decision == .chosen || $0.decision == .liked }.map(\.name)
         let skipped = history.filter { $0.decision == .skipped }.map(\.name)
-        lines.append("\nHIS TASTE, last 4 weeks:")
-        lines.append("Chose and ate: " + (chosen.isEmpty ? "nothing recorded yet" : Self.counted(chosen)))
-        lines.append("Swiped right (liked): " + (liked.isEmpty ? "nothing yet" : Self.counted(liked)))
-        lines.append("Swiped left (skipped): " + (skipped.isEmpty ? "nothing yet" : Self.counted(skipped)))
+        let list = shortlist.enumerated().map { index, item in
+            let tags = (item.dish.proteins + item.dish.vegetables + item.dish.grains).joined(separator: ", ")
+            return "\(index + 1). \(item.dish.name) (\(tags); \(Int(item.dish.protein)) g protein)"
+        }.joined(separator: "\n")
 
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
-        let yesterdayChosen = history.filter { $0.date == yesterday && $0.decision == .chosen }.map(\.name)
-        if !yesterdayChosen.isEmpty {
-            lines.append("Yesterday he ate: " + yesterdayChosen.joined(separator: "; ") + ". Don't repeat these today.")
+        let prompt = """
+        Choose \(Self.optionsPerSlot) of these \(slot.title.lowercased()) dishes for today. All of \
+        them already follow his dietitian's rules.
+        \(list)
+
+        He has enjoyed: \(liked.isEmpty ? "nothing recorded yet" : Self.counted(liked)).
+        He skipped: \(skipped.isEmpty ? "nothing" : Self.counted(skipped)).
+        This week: \(week.nudges.isEmpty ? "balanced so far" : week.nudges.joined(separator: " "))
+
+        Prefer what he enjoys, avoid what he skipped, fill this week's gaps, and keep the \
+        four different from each other (different protein or cuisine).
+        """
+
+        do {
+            let session = LanguageModelSession(instructions: """
+            You help one person choose home-cooked Indian vegetarian meals. Reply only with \
+            dish numbers from the list and a short reason for each. Never mention medicine \
+            or supplements.
+            """)
+            let response = try await session.respond(to: prompt, generating: MealChoice.self)
+            var seen = Set<Int>()
+            var result: [FoodPicker.Scored] = []
+            for pick in response.content.picks {
+                let index = pick.number - 1
+                guard shortlist.indices.contains(index), seen.insert(index).inserted else { continue }
+                var item = shortlist[index]
+                let reason = pick.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !reason.isEmpty, reason.count <= 90 { item.reason = reason }
+                result.append(item)
+            }
+            guard result.count == Self.optionsPerSlot else { return nil }
+            return result
+        } catch {
+            return nil
         }
-
-        // Already decided today (kept through a refresh).
-        let keptToday = options(for: date, in: context).filter { $0.decision == .chosen || $0.decision == .liked }
-        if !keptToday.isEmpty {
-            lines.append("Already on today's shortlist (don't duplicate): " + keptToday.map(\.name).joined(separator: "; "))
-        }
-
-        lines.append("\n" + weekBalance(for: date, in: context).promptSummary)
-        lines.append("\nPRACHI'S PLAN AND HIS PREFERENCES:\n" + Self.foodPlan)
-        lines.append("""
-
-        Give exactly \(Self.optionsPerSlot) options for each meal requested. Make the options \
-        genuinely different from each other (different protein, grain or cuisine), not one \
-        dish with a garnish swapped. Lean toward what he chose or liked, avoid what he \
-        skipped, and use this week's gaps to decide what to offer. Prefer Prachi's dishes; \
-        new dishes are welcome when they obey every rule and add variety he has asked for.
-        """)
-        return lines.joined(separator: "\n")
     }
 
     /// "Moong chilla ×3; Lemon rice" — repeats collapsed so frequency is visible.
@@ -182,88 +197,18 @@ final class FoodPlanService {
         else { return "(FoodPlan.md missing from the app bundle)" }
         return text
     }()
+}
 
-    // MARK: - Prompt
+@Generable
+struct MealChoice {
+    @Guide(description: "The chosen dishes", .count(4))
+    var picks: [MealPick]
+}
 
-    static let systemPrompt = """
-    You plan one day's home meals for Mukul, 42, vegetarian plus eggs, in Gurgaon/Delhi. \
-    His kitchen staff cook what he picks, so every option must be a real, named dish an \
-    Indian home kitchen can make the same day, with the portion cues Prachi uses.
-
-    Prachi's rules in the plan you are given are hard constraints: never suggest anything \
-    on the keep-out list, respect every cap, and keep dinners light with the ½ cup \
-    reheated rice. His stated preferences come next. Within those, your job is to make \
-    the week enjoyable and balanced: he finds weekday food dull, so vary cuisine and \
-    flavour (Bengali, South Indian, Gujarati, Asian-style tofu, a good tadka or chutney).
-
-    For each dish give: name (short, what he'd tell the cook), detail (one line: the \
-    components and portions), protein_g (your estimate for the whole meal, using the \
-    plan's protein numbers), vegetables, protein_sources and grains as short lowercase \
-    words (e.g. "lauki", "tofu", "egg", "paneer", "moong", "jowar", "rice"), and \
-    is_gluten_meal (true only for wheat rotis, khapli atta or whole-wheat sourdough \
-    beyond a single breakfast slice).
-
-    Plan food only. No supplement, medical or dosing advice.
-    """
-
-    // MARK: - Wire
-
-    struct Dish: Decodable {
-        let name: String
-        let detail: String
-        let proteinG: Double
-        let vegetables: [String]
-        let proteinSources: [String]
-        let grains: [String]
-        let isGlutenMeal: Bool
-
-        enum CodingKeys: String, CodingKey {
-            case name, detail, vegetables, grains
-            case proteinG = "protein_g"
-            case proteinSources = "protein_sources"
-            case isGlutenMeal = "is_gluten_meal"
-        }
-    }
-
-    struct PlanResult: Decodable {
-        var breakfast: [Dish]?
-        var lunch: [Dish]?
-        var dinner: [Dish]?
-
-        func dishes(for slot: MealSlot) -> [Dish] {
-            switch slot {
-            case .breakfast: breakfast ?? []
-            case .lunch:     lunch ?? []
-            case .dinner:    dinner ?? []
-            }
-        }
-
-        static func schema(slots: [MealSlot]) -> [String: Any] {
-            let strings: [String: Any] = ["type": "array", "items": ["type": "string"]]
-            let dish: [String: Any] = [
-                "type": "object",
-                "properties": [
-                    "name": ["type": "string"],
-                    "detail": ["type": "string"],
-                    "protein_g": ["type": "number"],
-                    "vegetables": strings,
-                    "protein_sources": strings,
-                    "grains": strings,
-                    "is_gluten_meal": ["type": "boolean"],
-                ],
-                "required": ["name", "detail", "protein_g", "vegetables", "protein_sources", "grains", "is_gluten_meal"],
-                "additionalProperties": false,
-            ]
-            var properties: [String: Any] = [:]
-            for slot in slots {
-                properties[slot.rawValue] = ["type": "array", "items": dish]
-            }
-            return [
-                "type": "object",
-                "properties": properties,
-                "required": slots.map(\.rawValue),
-                "additionalProperties": false,
-            ]
-        }
-    }
+@Generable
+struct MealPick {
+    @Guide(description: "The dish's number from the list")
+    var number: Int
+    @Guide(description: "Why it suits today, under 12 words")
+    var reason: String
 }

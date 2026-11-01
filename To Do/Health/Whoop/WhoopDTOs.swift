@@ -57,6 +57,29 @@ nonisolated struct WhoopSleep: Decodable {
         let sleepPerformancePercentage: Double?
         let sleepConsistencyPercentage: Double?
         let sleepEfficiencyPercentage: Double?
+        let sleepNeeded: SleepNeeded?
+
+        /// What WHOOP thinks he needed last night, in parts. The nap part is negative.
+        struct SleepNeeded: Decodable {
+            let baselineMilli: Double?
+            let needFromSleepDebtMilli: Double?
+            let needFromRecentStrainMilli: Double?
+            let needFromRecentNapMilli: Double?
+
+            enum CodingKeys: String, CodingKey {
+                case baselineMilli = "baseline_milli"
+                case needFromSleepDebtMilli = "need_from_sleep_debt_milli"
+                case needFromRecentStrainMilli = "need_from_recent_strain_milli"
+                case needFromRecentNapMilli = "need_from_recent_nap_milli"
+            }
+
+            var totalHours: Double? {
+                guard let baselineMilli else { return nil }
+                let total = baselineMilli + (needFromSleepDebtMilli ?? 0)
+                    + (needFromRecentStrainMilli ?? 0) + (needFromRecentNapMilli ?? 0)
+                return total / 3_600_000
+            }
+        }
 
         struct StageSummary: Decodable {
             let totalInBedTimeMilli: Double?
@@ -82,6 +105,7 @@ nonisolated struct WhoopSleep: Decodable {
             case sleepPerformancePercentage = "sleep_performance_percentage"
             case sleepConsistencyPercentage = "sleep_consistency_percentage"
             case sleepEfficiencyPercentage = "sleep_efficiency_percentage"
+            case sleepNeeded = "sleep_needed"
         }
     }
 

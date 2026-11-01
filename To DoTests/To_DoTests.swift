@@ -205,4 +205,143 @@ struct To_DoTests {
         #expect(text.contains("Caught up"))
         #expect(!text.contains("photoData"))
     }
+
+    // MARK: - Food, on-device version
+
+    @Test @MainActor
+    func catalogCoversEveryMeal() {
+        let dishes = FoodCatalog.dishes
+        #expect(dishes.count >= 80)
+        for slot in MealSlot.allCases {
+            #expect(dishes.filter { $0.slot == slot }.count >= 20)
+        }
+        #expect(Set(dishes.map(\.name)).count == dishes.count)
+    }
+
+    @Test @MainActor
+    func catalogKeepsPrachisKeepOutList() {
+        // "no chilli" / "no cashew" style notes are fine; the food itself is not.
+        let banned = ["poha", "cashew", "maida", "naan", "baingan", "brinjal", "bell pepper", "capsicum",
+                      "karela", "mushroom", "rava", "suji", "dosa", "chole", "chana", "lobia", "sattu",
+                      "edamame", "soya", "papaya", "besan chilla", "kadhi"]
+        for dish in FoodCatalog.dishes {
+            let text = (dish.name + " " + dish.detail).lowercased()
+                .replacingOccurrences(of: "no rava, no poha", with: "")
+                .replacingOccurrences(of: "no cashew", with: "")
+            for word in banned {
+                #expect(!text.contains(word), "\(dish.name) mentions \(word)")
+            }
+            if dish.slot == .dinner {
+                #expect(!dish.gluten, "\(dish.name): gluten belongs at lunch")
+                #expect(!dish.name.lowercased().contains("omelette"), "\(dish.name): no omelette at dinner")
+            }
+        }
+    }
+
+    private func date(_ string: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: string)!
+    }
+
+    @Test @MainActor
+    func pickerKeepsTuesdayBreakfastEggFree() {
+        // 2026-11-03 is a Tuesday.
+        let picker = FoodPicker(dishes: FoodCatalog.dishes, date: date("2026-11-03"), slot: .breakfast,
+                                history: [], week: WeekBalance(), shownToday: [])
+        #expect(picker.weekday == 2)
+        let picks = picker.pick(4)
+        #expect(picks.count == 4)
+        #expect(picks.allSatisfy { !$0.dish.hasEgg })
+    }
+
+    @Test @MainActor
+    func pickerRespectsWeeklyCaps() {
+        var week = WeekBalance()
+        week.paneerDays = 3
+        week.glutenMeals = 3
+        week.rajmaMeals = 1
+        let picker = FoodPicker(dishes: FoodCatalog.dishes, date: date("2026-11-05"), slot: .lunch,
+                                history: [], week: week, shownToday: [])
+        let allowed = picker.scored().map(\.dish)
+        #expect(!allowed.isEmpty)
+        #expect(allowed.allSatisfy { !$0.hasPaneer && !$0.gluten && !$0.hasRajma })
+    }
+
+    @Test @MainActor
+    func pickerAvoidsRepeatsAndSkips() {
+        let day = date("2026-11-05")
+        let history = [
+            FoodPicker.Past(name: "Lemon-pepper tofu with quinoa", date: date("2026-11-02"), decision: .chosen),
+            FoodPicker.Past(name: "Bengali bhapa paneer with bhindi", date: date("2026-11-04"), decision: .skipped),
+            FoodPicker.Past(name: "Bengali egg and pumpkin curry", date: date("2026-10-20"), decision: .chosen),
+        ]
+        let picker = FoodPicker(dishes: FoodCatalog.dishes, date: day, slot: .lunch,
+                                history: history, week: WeekBalance(), shownToday: ["Khapli roti tofu wraps"])
+        let names = Set(picker.scored().map(\.dish.name))
+        #expect(!names.contains("Lemon-pepper tofu with quinoa"))      // eaten 3 days ago
+        #expect(!names.contains("Bengali bhapa paneer with bhindi"))   // skipped yesterday
+        #expect(!names.contains("Khapli roti tofu wraps"))             // already shown today
+        #expect(names.contains("Bengali egg and pumpkin curry"))       // eaten over two weeks ago
+    }
+
+    @Test @MainActor
+    func pickerSpreadsProteins() {
+        let picker = FoodPicker(dishes: FoodCatalog.dishes, date: date("2026-11-06"), slot: .dinner,
+                                history: [], week: WeekBalance(), shownToday: [])
+        let picks = picker.pick(4)
+        #expect(picks.count == 4)
+        #expect(Set(picks.compactMap { $0.dish.proteins.first }).count >= 3)
+        #expect(picks.allSatisfy { !$0.reason.isEmpty })
+    }
+
+    // MARK: - Health facts
+
+    @MainActor
+    private func sampleDays(now: Date, sleep: Double, need: Double, strainRecent: Double) -> [DailyMetric] {
+        (0..<60).map { offset in
+            let day = DailyMetric(date: Calendar.current.date(byAdding: .day, value: -offset, to: now)!)
+            day.recovery = offset == 0 ? 72 : 55
+            day.hrv = offset == 0 ? 56 : 48
+            day.restingHR = 54
+            day.sleepHours = sleep
+            day.sleepNeedHours = need
+            day.dayStrain = offset <= 7 ? strainRecent : 8
+            return day
+        }
+    }
+
+    @Test @MainActor
+    func healthFactsMatchTheDashboardsComparisons() {
+        let now = date("2026-11-05")
+        let facts = HealthFacts(metrics: sampleDays(now: now, sleep: 6.8, need: 8.2, strainRecent: 12), workouts: [], now: now)
+        #expect(facts.headline.hasPrefix("Recovery 72 (from 55)"))
+        #expect(facts.goingWell.contains { $0.contains("green") })
+        #expect(facts.goingWell.contains { $0.contains("HRV 56.0 ms") })
+        #expect(facts.watch.contains { $0.contains("short") })
+        #expect(facts.watch.contains { $0.contains("Load ratio") })
+        #expect(facts.workOn.contains { $0.contains("22:15") })
+    }
+
+    @Test @MainActor
+    func healthFactsRestOnRedAfterLoadDays() {
+        let now = date("2026-11-05")
+        let days = sampleDays(now: now, sleep: 7.8, need: 7.5, strainRecent: 14)
+        days.first { Calendar.current.isDate($0.date, inSameDayAs: now) }?.recovery = 30
+        let facts = HealthFacts(metrics: days, workouts: [], now: now)
+        #expect(facts.watch.contains { $0.contains("in the red") })
+        #expect(facts.workOn.first?.hasPrefix("Rest today") == true)
+    }
+
+    @Test @MainActor
+    func writtenBriefCannotInventNumbers() {
+        let facts = HealthFacts(headline: "Recovery 66 (from 51).", goingWell: ["Slept 8.3 h."],
+                                watch: ["Sleep debt is 78 min."], workOn: ["Lights out by 22:30."])
+        let invented = WrittenBrief(headline: "Recovery 66, best in 90 days.", goingWell: ["Slept 8.3 h, a great night."],
+                                    watch: ["Debt 78 min."], workOn: ["Lights out by 22:30."])
+        let accepted = HealthBriefService.accept(invented, against: facts)
+        #expect(accepted.headline == facts.headline)           // 90 is not in the facts
+        #expect(accepted.goingWell == ["Slept 8.3 h, a great night."])
+        #expect(accepted.watch == ["Debt 78 min."])
+    }
 }
