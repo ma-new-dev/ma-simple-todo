@@ -67,3 +67,17 @@ Amounts are ₹ crore. Percentages are plain numbers (10.73 means 10.73%). Dates
 Optional: `totals.blendedIrrInclCashPct`, `totals.vsNifty500Cr`, `segments[].irrPct`,
 `segments[].note`, `managers[].irrPct`, `managers[].vsNifty500Cr`, `managers[].asOf`,
 `decisions[].nextDate`, `history[].netInvestedCr`.
+
+## Monthly scorecard fields (3.0 build 21+)
+
+All optional; the Net Worth tab hides a section when its fields are missing.
+
+- `period`: the statement month, e.g. "September 2026".
+- `monthSummary`: two or three sentences on the month against the market and what changed.
+- `benchmark`: `{name, monthPct, oneYearPct}`, e.g. BSE 500 TRI −5.57 / −2.33.
+- per manager: `monthPct`, `oneYearPct`, `verdict` (strong | steady | watch | lagging | new |
+  cash), `why` (one line with the numbers), `action` (Add | Hold | Reduce | Exit | Switch),
+  `decisionRef` (e.g. "#5").
+- per decision: `kind` (add | exit | watch | fees | admin) and `needsDecision` (true when the
+  tracker says it fired or is due within 30 days).
+- `deployment`: `{title, targetCr, items: [{name, plannedCr, doneCr}]}` for a running plan.

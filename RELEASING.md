@@ -5,7 +5,7 @@ Distribution certificate, and access to the developer portal. CI compiles the ap
 the tests, but it never signs, archives, or uploads — those need credentials that should
 not live in a repository.
 
-Current state: **version 3.0, build 20 ("MA Compass" on the home screen)**, on branch `compass-3.0`.
+Current state: **version 3.0, build 21 ("MA Compass" on the home screen)**, on branch `compass-3.0`.
 
 3.0 renames Folio to **Compass** (display name only: bundle ID `com.matodoapp.todo`, the
 CloudKit container and the on-device store are unchanged, so it installs as an update) and

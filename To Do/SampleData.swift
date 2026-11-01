@@ -118,65 +118,102 @@ enum SampleData {
         // MARK: - Health (screenshot mode only)
 
         let calendar = Calendar.current
-        // recovery, hrv, rhr, sleep h, sleep perf, strain, steps, exercise min — newest last
-        let week: [(Double, Double, Double, Double, Double, Double, Double, Double)] = [
-            (71, 55, 51, 7.4, 86, 9.8, 12_400, 48),
-            (64, 52, 53, 7.0, 81, 6.1, 9_800, 22),
-            (58, 50, 53, 7.1, 82, 11.6, 14_100, 61),
-            (70, 56, 51, 7.6, 88, 13.5, 13_200, 55),
-            (68, 54, 52, 7.2, 84, 12.0, 15_300, 64),
-            (70, 56, 51, 7.3, 85, 14.4, 16_800, 72),
-            (42, 43, 54, 7.0, 82, 4.2, 6_100, 18),
-        ]
-        for (offset, values) in week.enumerated() {
-            let date = calendar.date(byAdding: .day, value: offset - (week.count - 1), to: Date()) ?? Date()
+        let today = calendar.startOfDay(for: Date())
+        // Six months of believable days: slow monthly drift plus a weekly rhythm.
+        for back in (0..<182).reversed() {
+            guard let date = calendar.date(byAdding: .day, value: -back, to: today) else { continue }
+            let t = Double(back)
+            let weekday = calendar.component(.weekday, from: date) // 1 = Sunday
             let m = DailyMetric(date: date)
-            (m.recovery, m.hrv, m.restingHR, m.sleepHours, m.sleepPerformance, m.dayStrain, m.steps, m.exerciseMinutes) = values
+            m.recovery = min(96, max(22, 64 + 12 * sin(t / 4.3) - (back < 60 && back > 30 ? 7 : 0) + (back < 30 ? 4 : 0)))
+            m.hrv = 49 + 4 * sin(t / 5.1) + (back < 30 ? 2.2 : 0) - (back > 120 ? 1.5 : 0)
+            m.restingHR = 54 - 1.2 * sin(t / 6.0) - (back < 30 ? 1 : 0)
+            m.sleepHours = 7.2 + 0.6 * sin(t / 3.1)
+            m.sleepNeedHours = 8.2 + 0.3 * sin(t / 2.7)
+            m.sleepDebtHours = max(0, 1.1 + 0.6 * sin(t / 4.0))
+            m.sleepPerformance = 84 + 6 * sin(t / 3.1)
+            m.sleepConsistency = 72 + 8 * sin(t / 7.0)
+            m.deepPct = 22 + 2 * sin(t / 2.0)
+            m.remPct = 30 + 3 * sin(t / 2.5)
+            m.dayStrain = back == 0 ? 6.4 : ([1, 7].contains(weekday) ? 13.5 : (weekday == 4 ? 6 : 10.5)) + 1.5 * sin(t / 1.7)
+            m.steps = 11_000 + 3_000 * sin(t / 2.2)
+            m.exerciseMinutes = 45 + 15 * sin(t / 2.9)
             m.recoverySource = "whoop"
             context.insert(m)
+
+            let sport: String? = switch weekday {
+            case 2, 6: "weightlifting"
+            case 4: "functional fitness"
+            case 5: "running"
+            case 7: "padel"
+            case 1: "cricket"
+            default: nil
+            }
+            if let sport, back < 70 {
+                let workout = Workout(date: date.addingTimeInterval(8 * 3600), externalID: "sample-\(back)", type: sport,
+                                      durationMin: sport == "cricket" ? 150 : 55, source: "whoop")
+                workout.strain = sport == "padel" || sport == "cricket" ? 12.4 : (sport == "running" ? 13.1 : 11.2)
+                workout.avgHR = sport == "running" ? 141 : 112
+                workout.zoneMinutes = [10, 15, 12, 14, sport == "padel" ? 3 : 0.4, 0]
+                context.insert(workout)
+            }
         }
         let brief = HealthBrief(date: Date())
-        brief.headline = "Recovery fell to 42 from 70 after yesterday's 14.4 strain on 7.0 h of sleep: keep today light."
-        brief.goingWell = ["Thursday's run stayed in zone 3 for 36 of 40 minutes: properly easy."]
-        brief.watch = ["Sleep has fallen short of need for seven nights; the gap is now 1.9 h."]
-        brief.today = ["No second session today; treat padel tomorrow as social if recovery is still under 50.", "Lights out by 22:30."]
+        brief.headline = "Recovery 71 (from 58), HRV 53.4 ms, resting HR 53, 7.6 h sleep."
+        brief.goingWell = ["Recovery is in the green after a 13-point jump.", "30-day average HRV 51.4 ms, up from 48.9 the 30 days before."]
+        brief.watch = ["Slept 7.6 h against an 8.4 h need; sleep debt is 72 min.", "Only 6 min at zone 4 or above in 30 days."]
+        brief.today = ["Green light for padel as planned; add 5 to 10 min at zone 4.", "Dinner by 19:30 and lights out by 22:15."]
         context.insert(brief)
 
         // MARK: - Food (screenshot mode only)
 
-        let meals: [(MealSlot, String, String, Double, [String], [String], [String], Bool)] = [
-            (.breakfast, "Moong dal chilla with lauki", "1 large thick chilla stuffed with grated lauki and carrot, 30 g paneer, tomato-ginger chutney", 24, ["lauki", "carrot"], ["moong", "paneer"], [], false),
-            (.breakfast, "Oats porridge with whey", "40 g oats cooked soft, 1 scoop whey off the heat, ½ firm banana, 1 tsp flax", 29, [], ["whey"], ["oats"], false),
-            (.breakfast, "Vegetable omelette on sourdough", "2 eggs + 2 whites with beans and carrot, 1 slice true sourdough, 1 kiwi", 25, ["beans", "carrot"], ["egg"], ["sourdough"], false),
-            (.breakfast, "Moong dal idli and sambhar", "3 moong dal idli, ¾ cup carrot-beans sambhar, 1 boiled egg", 24, ["carrot", "beans"], ["moong", "toor", "egg"], ["rice"], false),
-            (.lunch, "Bengali bhapa paneer", "100 g paneer steamed in mustard-coconut paste, panch phoran bhindi, ½ cup quinoa", 31, ["bhindi"], ["paneer", "moong"], ["quinoa"], false),
-            (.lunch, "Lemon-pepper tofu bowl", "130 g firm tofu, ½ cup quinoa, roasted carrot and beans, ½ cup moong dal", 29, ["carrot", "beans"], ["tofu", "moong"], ["quinoa"], false),
-            (.dinner, "Dal palak with reheated rice", "1½ cups toor-moong dal with palak, seasonal sabzi, ½ cup cooled-and-reheated rice", 23, ["palak"], ["toor", "moong"], ["rice"], false),
-        ]
-        for (index, meal) in meals.enumerated() {
-            let option = MealOption(date: Date(), slot: meal.0, sortOrder: index, name: meal.1, detail: meal.2)
-            (option.proteinGrams, option.vegetables, option.proteinSources, option.grains, option.isGlutenMeal) = (meal.3, meal.4, meal.5, meal.6, meal.7)
-            option.reason = ["Prachi's pick for Friday", "You liked this last week", "Adds tofu: 1 of 3-4 meals so far", "From Prachi's Week 1 plan"][index % 4]
-            context.insert(option)
+        for slot in MealSlot.allCases {
+            let picker = FoodPicker(dishes: FoodCatalog.dishes, date: today, slot: slot, history: [], week: WeekBalance(), shownToday: [])
+            for (index, pick) in picker.pick(FoodPlanService.optionsPerSlot).enumerated() {
+                let option = MealOption(date: today, slot: slot, sortOrder: index, name: pick.dish.name, detail: pick.dish.detail)
+                option.proteinGrams = pick.dish.protein
+                option.vegetables = pick.dish.vegetables
+                option.proteinSources = pick.dish.proteins
+                option.grains = pick.dish.grains
+                option.isGlutenMeal = pick.dish.gluten
+                option.reason = pick.reason
+                if slot == .breakfast, index == 1 { option.decision = .chosen }
+                if slot == .lunch, index == 2 { option.decision = .liked }
+                context.insert(option)
+            }
         }
 
         // MARK: - Net worth (screenshot mode only; made-up numbers)
 
         NetWorthStore.shared.summary = NetWorthSummary(
             asOf: "2026-09-30",
-            refreshedAt: "2026-10-18",
+            refreshedAt: "2026-11-01",
             totals: .init(netInvestedCr: 100, fmvCr: 120, gainCr: 20, lifetimeGainPct: 20, blendedIrrPct: 11, blendedIrrInclCashPct: 9, vsNifty500Cr: 2.5),
             allocation: [.init(name: "Equity / AIF", pct: 50), .init(name: "Parked cash", pct: 35), .init(name: "Debt", pct: 10), .init(name: "Multi-asset", pct: 5)],
             segments: [
-                .init(name: "Equity", netInvestedCr: 50, fmvCr: 60, irrPct: 10.5, note: "8 PMS/AIF + 2 MF"),
+                .init(name: "Equity", netInvestedCr: 50, fmvCr: 60, irrPct: 10.5, note: "6 PMS/AIF + 2 MF"),
                 .init(name: "Debt", netInvestedCr: 12, fmvCr: 13, irrPct: 8.8, note: nil),
+                .init(name: "Parked cash", netInvestedCr: 40, fmvCr: 42, irrPct: 5.6, note: "Liquid + Arbitrage"),
             ],
             managers: [
-                .init(name: "Manager A", type: "PMS", fmvCr: 15, gainCr: 4, irrPct: 16, vsNifty500Cr: 1.2, asOf: nil),
-                .init(name: "Manager B", type: "Cat-III AIF", fmvCr: 9, gainCr: -0.2, irrPct: -2.1, vsNifty500Cr: -0.4, asOf: nil),
+                .init(name: "Manager A", type: "PMS", fmvCr: 15, gainCr: 4, irrPct: 16, vsNifty500Cr: 1.2, monthPct: -3.1, oneYearPct: 14.2, verdict: "strong", why: "1Y +14.2% vs −2.3% for the market; ₹1.2 cr ahead of the index fund.", action: "Add", decisionRef: "#5"),
+                .init(name: "Manager B", type: "PMS", fmvCr: 9, gainCr: 2.1, irrPct: 12.4, vsNifty500Cr: 0.6, monthPct: -4.2, oneYearPct: 5.1, verdict: "strong", why: "Steady compounding; beat the market in 9 of the last 12 months.", action: "Hold"),
+                .init(name: "Manager C", type: "PMS", fmvCr: 7, gainCr: 1.4, irrPct: 9.8, vsNifty500Cr: -0.2, monthPct: -2.6, oneYearPct: -7.9, verdict: "watch", why: "Held up this month, but 1Y −7.9% vs −2.3% at a full fee.", action: "Reduce", decisionRef: "#1"),
+                .init(name: "Manager D", type: "Cat-III AIF", fmvCr: 3, gainCr: -0.2, irrPct: -2.1, vsNifty500Cr: -0.4, monthPct: -6.1, verdict: "lagging", why: "Negative since inception and behind the index fund.", action: "Exit", decisionRef: "#2"),
+                .init(name: "Manager E", type: "Equity MF", fmvCr: 20, gainCr: 1.8, irrPct: 4.2, vsNifty500Cr: 0.3, monthPct: -5.5, verdict: "steady", why: "Moves with the market.", action: "Hold"),
+                .init(name: "Liquid", type: "Liquid MF", fmvCr: 42, gainCr: 2, irrPct: 5.6, verdict: "cash", why: "Parked corpus awaiting deployment.", action: "Hold"),
             ],
-            decisions: [.init(title: "#10 Manager fee change", status: "due <=30d", nextDate: "22-Oct-2026")],
-            history: [.init(date: "2026-09-18", fmvCr: 116, netInvestedCr: 98), .init(date: "2026-10-05", fmvCr: 118, netInvestedCr: 99), .init(date: "2026-10-18", fmvCr: 120, netInvestedCr: 100)]
+            decisions: [
+                .init(title: "#5 ₹20 cr deployment", status: "13 of 20 cr deployed", nextDate: "15-Nov-2026", kind: "add", needsDecision: false),
+                .init(title: "#1 Manager C: reduce unless fees cut", status: "1Y alpha −5.6pp; no fee offer", nextDate: "13-Nov-2026", kind: "exit", needsDecision: false),
+                .init(title: "#2 Manager D: exit at the window", status: "Notice by May 2027", nextDate: "21-May-2027", kind: "exit", needsDecision: false),
+                .init(title: "#10 Manager fee change", status: "Billed at the old rate", nextDate: "10-Jan-2027", kind: "fees", needsDecision: false),
+            ],
+            history: [.init(date: "2026-09-18", fmvCr: 116, netInvestedCr: 98), .init(date: "2026-10-05", fmvCr: 118, netInvestedCr: 99), .init(date: "2026-10-18", fmvCr: 120.5, netInvestedCr: 100), .init(date: "2026-11-01", fmvCr: 120, netInvestedCr: 100)],
+            period: "September 2026",
+            monthSummary: "The market fell 5.6% in September. Four of five equity managers lost less; Manager D lost more. Value is down ₹0.5 cr since the last refresh. Nothing needs a decision this cycle.",
+            benchmark: .init(name: "BSE 500 TRI", monthPct: -5.57, oneYearPct: -2.33),
+            deployment: .init(title: "₹20 cr PMS deployment", targetCr: 20, items: [.init(name: "Manager A", plannedCr: 7, doneCr: 5), .init(name: "Manager B", plannedCr: 5.5, doneCr: 4), .init(name: "Manager C", plannedCr: 4.5, doneCr: 0), .init(name: "Manager E", plannedCr: 3, doneCr: 4)])
         )
 
         try? context.save()

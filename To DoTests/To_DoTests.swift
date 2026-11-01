@@ -344,4 +344,52 @@ struct To_DoTests {
         #expect(accepted.goingWell == ["Slept 8.3 h, a great night."])
         #expect(accepted.watch == ["Debt 78 min."])
     }
+
+    // MARK: - 3.0 (21) redesign
+
+    @Test @MainActor
+    func healthTrendsAverageByMonthAndSkipTodaysStrain() {
+        let now = date("2026-11-05")
+        let days: [DailyMetric] = (0..<70).map { back in
+            let day = DailyMetric(date: Calendar.current.date(byAdding: .day, value: -back, to: now)!)
+            day.recovery = back < 5 ? 80 : (back < 36 ? 60 : 50)   // Nov 80, Oct 60, Sep mostly 50
+            day.dayStrain = back == 0 ? 2 : 10
+            return day
+        }
+        let trends = HealthTrends(metrics: days, now: now)
+        let months = trends.monthly(.recovery)
+        #expect(months.last?.isCurrent == true)
+        #expect(months.last?.value == 80)
+        #expect(months.dropLast().last?.value == 60)
+        #expect(trends.latest(.strain) == 10)          // today's partial cycle is skipped
+        #expect(trends.latest(.recovery) == 80)
+        #expect(trends.monthlyInsight(.recovery)?.hasPrefix("October averaged 60 against 50 in September") == true)
+    }
+
+    @Test @MainActor
+    func planTextFindsTheDaysSnack() {
+        let plan = FoodPlanService.foodPlan
+        #expect(PlanText.snack(in: plan, week: 1, weekday: 1) == "150 g Greek yogurt + 1 kiwi + 1 tbsp pumpkin seeds")
+        #expect(PlanText.snack(in: plan, week: 3, weekday: 7) == "Stewed apple with cinnamon + 2 boiled eggs")
+        #expect(PlanText.afterExercise(in: plan)?.contains("within an hour") == true)
+    }
+
+    @Test
+    func netWorthScorecardDecodesAndJudges() throws {
+        let json = """
+        {"asOf":"2026-09-30","refreshedAt":"2026-11-01",
+         "totals":{"netInvestedCr":100,"fmvCr":120,"gainCr":20,"lifetimeGainPct":20,"blendedIrrPct":11},
+         "allocation":[],"segments":[],"decisions":[{"title":"#5 Deploy","status":"13 of 20","kind":"add","needsDecision":false}],
+         "history":[],"period":"September 2026","benchmark":{"name":"BSE 500 TRI","monthPct":-5.57},
+         "deployment":{"title":"Plan","targetCr":20,"items":[{"name":"A","plannedCr":3,"doneCr":4},{"name":"B","plannedCr":7,"doneCr":5}]},
+         "managers":[{"name":"A","type":"PMS","fmvCr":10,"gainCr":2,"verdict":"watch","action":"Reduce","monthPct":-2.8},
+                     {"name":"B","type":"PMS","fmvCr":5,"gainCr":-1,"vsNifty500Cr":-0.4}]}
+        """
+        let summary = try JSONDecoder().decode(NetWorthSummary.self, from: Data(json.utf8))
+        #expect(summary.period == "September 2026")
+        #expect(summary.managers[0].resolvedVerdict == .watch)
+        #expect(summary.managers[1].resolvedVerdict == .lagging)   // no verdict: judged by the index lead
+        #expect(summary.deployment?.doneCr == 9)                     // over-delivery counts
+        #expect(summary.decisions.first?.kind == "add")
+    }
 }

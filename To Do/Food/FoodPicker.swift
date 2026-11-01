@@ -67,9 +67,17 @@ struct FoodPicker {
 
     /// Prachi's 4-week cycle, matched to the calendar so a given week always lands on
     /// the same plan week.
-    var planWeek: Int { (calendar.component(.weekOfYear, from: date) % 4) + 1 }
+    var planWeek: Int { Self.planWeek(for: date, calendar: calendar) }
     /// Monday = 1 ... Sunday = 7.
-    var weekday: Int { (calendar.component(.weekday, from: date) + 5) % 7 + 1 }
+    var weekday: Int { Self.weekday(for: date, calendar: calendar) }
+
+    static func planWeek(for date: Date, calendar: Calendar = .current) -> Int {
+        (calendar.component(.weekOfYear, from: date) % 4) + 1
+    }
+
+    static func weekday(for date: Date, calendar: Calendar = .current) -> Int {
+        (calendar.component(.weekday, from: date) + 5) % 7 + 1
+    }
 
     // MARK: - Rules
 
@@ -182,5 +190,33 @@ struct FoodPicker {
     /// djb2; Swift's `hashValue` changes every launch.
     static func stableHash(_ string: String) -> UInt64 {
         string.utf8.reduce(5381) { ($0 &<< 5) &+ $0 &+ UInt64($1) }
+    }
+}
+
+/// Lines read straight from Prachi's plan text (FoodPlan.md) that the catalog doesn't
+/// model: the day's 3:45 snack and the after-exercise guidance.
+enum PlanText {
+    /// The snack line for a plan week (1-4) and weekday (Monday = 1), e.g. "150 g Greek
+    /// yogurt + 1 kiwi + 1 tbsp pumpkin seeds".
+    static func snack(in plan: String, week: Int, weekday: Int) -> String? {
+        let day = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][max(1, min(7, weekday)) - 1]
+        guard let weekStart = plan.range(of: "## Week \(week)\n") else { return nil }
+        let rest = plan[weekStart.upperBound...]
+        let weekText = rest.range(of: "\n## Week ").map { rest[..<$0.lowerBound] } ?? rest
+        guard let snackStart = weekText.range(of: "### Snack\n") else { return nil }
+        for line in weekText[snackStart.upperBound...].split(separator: "\n") {
+            if line.hasPrefix("###") { break }
+            if line.hasPrefix("- \(day): ") { return String(line.dropFirst(day.count + 4)) }
+        }
+        return nil
+    }
+
+    /// The "After exercise" paragraph, without its heading.
+    static func afterExercise(in plan: String) -> String? {
+        guard let start = plan.range(of: "## After exercise\n") else { return nil }
+        let rest = plan[start.upperBound...]
+        let text = rest.range(of: "\n## ").map { rest[..<$0.lowerBound] } ?? rest
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

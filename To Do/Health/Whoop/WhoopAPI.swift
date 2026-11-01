@@ -84,7 +84,7 @@ enum WhoopAPI {
         of type: Record.Type,
         start: Date,
         token: String,
-        maxPages: Int = 12
+        maxPages: Int = 30
     ) async throws -> [Record] {
         var records: [Record] = []
         var next: String?

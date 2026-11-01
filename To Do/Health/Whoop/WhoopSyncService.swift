@@ -43,8 +43,14 @@ final class WhoopSyncService {
         await sync(into: context)
     }
 
-    /// 62 days so the brief can compare the last 30 with the 30 before.
-    func sync(into context: ModelContext, daysBack: Int = 62) async {
+    /// Set once six months of history have been pulled, for the Health tab's trends.
+    private static let backfillKey = "whoop.backfilled180"
+
+    /// The first sync pulls 185 days for the six-month trends; after that 62 days, so the
+    /// brief can compare the last 30 with the 30 before and late-scored days are refreshed.
+    func sync(into context: ModelContext, daysBack: Int? = nil) async {
+        let needsBackfill = !UserDefaults.standard.bool(forKey: Self.backfillKey)
+        let daysBack = daysBack ?? (needsBackfill ? 185 : 62)
         guard !isSyncing else { return }
         isSyncing = true
         lastError = nil
@@ -74,6 +80,7 @@ final class WhoopSyncService {
 
             try context.save()
             lastSyncedAt = Date()
+            if daysBack >= 180 { UserDefaults.standard.set(true, forKey: Self.backfillKey) }
         } catch {
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
